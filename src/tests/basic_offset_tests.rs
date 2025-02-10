@@ -2,8 +2,8 @@
 mod tests {
     use crate::{extract_json, AsyncJsonParser, ChannelReader};
 
-    use tokio::io::BufReader;
     use std::io::Cursor;
+    use tokio::io::BufReader;
     use tokio::sync::mpsc;
     use tokio::time::{sleep, Duration};
 
@@ -57,7 +57,13 @@ mod tests {
         let stream = BufReader::new(Cursor::new(data.to_vec()));
         let mut parser = AsyncJsonParser::new(stream);
         let person: Person = parser.next().await.unwrap();
-        assert_eq!(person, Person { name: "Alice".into(), age: 30 });
+        assert_eq!(
+            person,
+            Person {
+                name: "Alice".into(),
+                age: 30
+            }
+        );
     }
 
     #[tokio::test]
@@ -67,9 +73,21 @@ mod tests {
         let stream = BufReader::new(Cursor::new(data.as_bytes().to_vec()));
         let mut parser = AsyncJsonParser::new(stream);
         let person1: Person = parser.next().await.unwrap();
-        assert_eq!(person1, Person { name: "Alice".into(), age: 30 });
+        assert_eq!(
+            person1,
+            Person {
+                name: "Alice".into(),
+                age: 30
+            }
+        );
         let person2: Person = parser.next().await.unwrap();
-        assert_eq!(person2, Person { name: "Bob".into(), age: 25 });
+        assert_eq!(
+            person2,
+            Person {
+                name: "Bob".into(),
+                age: 25
+            }
+        );
     }
 
     // --- Tests for NDJSON ---
@@ -79,22 +97,46 @@ mod tests {
         let stream = BufReader::new(Cursor::new(ndjson.as_bytes().to_vec()));
         let mut parser = AsyncJsonParser::new(stream);
         let entry: LogEntry = parser.next_ndjson().await.unwrap();
-        assert_eq!(entry, LogEntry { level: "INFO".into(), message: "Hello NDJSON".into() });
+        assert_eq!(
+            entry,
+            LogEntry {
+                level: "INFO".into(),
+                message: "Hello NDJSON".into()
+            }
+        );
     }
 
     #[tokio::test]
     async fn test_next_ndjson_multiple_lines() {
         let ndjson = r#"{"level": "INFO", "message": "First"}
-{"level": "WARN", "message": "Second"}
-{"level": "ERROR", "message": "Third"}"#;
+    {"level": "WARN", "message": "Second"}
+    {"level": "ERROR", "message": "Third"}"#;
         let stream = BufReader::new(Cursor::new(ndjson.as_bytes().to_vec()));
         let mut parser = AsyncJsonParser::new(stream);
         let entry1: LogEntry = parser.next_ndjson().await.unwrap();
         let entry2: LogEntry = parser.next_ndjson().await.unwrap();
         let entry3: LogEntry = parser.next_ndjson().await.unwrap();
-        assert_eq!(entry1, LogEntry { level: "INFO".into(), message: "First".into() });
-        assert_eq!(entry2, LogEntry { level: "WARN".into(), message: "Second".into() });
-        assert_eq!(entry3, LogEntry { level: "ERROR".into(), message: "Third".into() });
+        assert_eq!(
+            entry1,
+            LogEntry {
+                level: "INFO".into(),
+                message: "First".into()
+            }
+        );
+        assert_eq!(
+            entry2,
+            LogEntry {
+                level: "WARN".into(),
+                message: "Second".into()
+            }
+        );
+        assert_eq!(
+            entry3,
+            LogEntry {
+                level: "ERROR".into(),
+                message: "Third".into()
+            }
+        );
     }
 
     // --- Tests for Improved Error Reporting ---
@@ -120,7 +162,13 @@ mod tests {
         let mut parser = AsyncJsonParser::new(stream);
         // The parser uses from_utf8_lossy so it should still parse the valid JSON.
         let person: Person = parser.next().await.unwrap();
-        assert_eq!(person, Person { name: "Alice".into(), age: 30 });
+        assert_eq!(
+            person,
+            Person {
+                name: "Alice".into(),
+                age: 30
+            }
+        );
     }
 
     // --- Tests for Relaxed JSON Formats ---
@@ -133,7 +181,13 @@ mod tests {
         let stream = BufReader::new(Cursor::new(data.to_vec()));
         let mut parser = AsyncJsonParser::new(stream);
         let person: Person = parser.next().await.unwrap();
-        assert_eq!(person, Person { name: "Alice".into(), age: 30 });
+        assert_eq!(
+            person,
+            Person {
+                name: "Alice".into(),
+                age: 30
+            }
+        );
     }
 
     // --- Tests for LLM response extraction (extra text around JSON) ---
@@ -196,6 +250,12 @@ And here is some footer text."#;
             }
         });
         let person: Person = parser.next().await.unwrap();
-        assert_eq!(person, Person { name: "Alice".into(), age: 30 });
+        assert_eq!(
+            person,
+            Person {
+                name: "Alice".into(),
+                age: 30
+            }
+        );
     }
 }
