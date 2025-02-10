@@ -1,3 +1,51 @@
+// src/lib.rs
+
+//! # Streaming JSON Library
+//!
+//! This library provides an asynchronous streaming JSON parser that can extract and
+//! deserialize JSON blocks from a stream. It can handle extra text surrounding the JSON
+//! and supports both JSON objects (starting with `{`) and JSON arrays (starting with `[`).
+//!
+//! ## Example
+//!
+//! ```no_run
+//! use tokio::sync::mpsc;
+//! use tokio::time::{sleep, Duration};
+//!
+//! #[derive(Debug, serde::Deserialize)]
+//! struct Person {
+//!     name: String,
+//!     age: u32,
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Create a channel to simulate streaming input.
+//!     let (tx, rx) = mpsc::channel::<Vec<u8>>(10);
+//!     let reader = async_serde::ChannelReader::new(rx);
+//!     let mut parser = async_serde::AsyncJsonParser::new(reader);
+//!
+//!     // Simulate sending a JSON response with extra text in parts.
+//!     tokio::spawn(async move {
+//!         let response = r#"Some header text...
+//!         {
+//!           "name": "Alice",
+//!           "age": 30
+//!         }
+//!         Some footer text."#;
+//!         for part in response.as_bytes().chunks(40) {
+//!             tx.send(part.to_vec()).await.unwrap();
+//!             sleep(Duration::from_millis(20)).await;
+//!         }
+//!     });
+//!
+//!     // Parse the next JSON object from the stream.
+//!     let person: Person = parser.next().await?;
+//!     println!("Parsed person: {:?}", person);
+//!     Ok(())
+//! }
+//! ```
+
 use serde::de::DeserializeOwned;
 use serde_json::{self, error::Category};
 use std::io::{Error as IoError, ErrorKind};
@@ -5,30 +53,24 @@ use tokio::io::{AsyncRead, AsyncReadExt, Error, ReadBuf};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
-use tokio::time::{sleep, Duration};
+
 
 /// Extracts the first JSON block (balanced braces or brackets) from a text string.
-/// It supports both JSON objects (starting with '{') and JSON arrays (starting with '[').
+/// It supports both JSON objects (starting with `{`) and JSON arrays (starting with `[`).
 /// This function ignores braces/brackets that occur inside string literals.
-fn extract_json(text: &str) -> Option<String> {
-    let text = text.trim();
-    // If the text starts with a valid JSON start char, use it; otherwise, search for one.
-    let first_char = text.chars().next()?;
+///
+/// Returns a tuple of the extracted JSON string and the number of bytes consumed.
+pub fn extract_json_with_offset(text: &str) -> Option<(String, usize)> {
+    // Trim any leading whitespace.
+    let text = text.trim_start();
+    // Find the first occurrence of '{' or '['.
+    let start = text.find(|c: char| c == '{' || c == '[')?;
+    let text_slice = &text[start..];
+    let first_char = text_slice.chars().next()?;
     let (opening, closing) = match first_char {
         '{' => ('{', '}'),
         '[' => ('[', ']'),
-        _ => {
-            // If not starting with { or [, try to find the first occurrence of either.
-            let pos1 = text.find('{');
-            let pos2 = text.find('[');
-            let start = match (pos1, pos2) {
-                (Some(a), Some(b)) => std::cmp::min(a, b),
-                (Some(a), None) => a,
-                (None, Some(b)) => b,
-                (None, None) => return None,
-            };
-            return extract_json(&text[start..]);
-        }
+        _ => return None, // should not occur
     };
 
     let mut count = 0;
@@ -36,7 +78,8 @@ fn extract_json(text: &str) -> Option<String> {
     let mut escape = false;
     let mut end = None;
 
-    for (i, c) in text.char_indices() {
+    // Iterate over the characters in the slice.
+    for (i, c) in text_slice.char_indices() {
         if in_string {
             if escape {
                 escape = false;
@@ -59,17 +102,21 @@ fn extract_json(text: &str) -> Option<String> {
             }
         }
     }
-    end.map(|e| text[..e].to_string())
+    end.map(|e| (text[start..start + e].to_string(), start + e))
 }
 
 /// A streaming JSON parser that buffers incoming data and, once available,
 /// extracts a JSON block (even if extra text is present) and deserializes it.
-struct AsyncJsonParser<R> {
+///
+/// This parser will remove only the parsed portion from its internal buffer so that
+/// subsequent calls to `next()` can extract additional JSON blocks from the same stream.
+pub struct AsyncJsonParser<R> {
     reader: R,
     buffer: Vec<u8>,
 }
 
 impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
+    /// Creates a new JSON parser from the given asynchronous reader.
     pub fn new(reader: R) -> Self {
         Self {
             reader,
@@ -78,34 +125,39 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
     }
 
     /// Reads data into an internal buffer until a valid JSON block can be extracted
-    /// (using `extract_json`), then attempts to deserialize that block into type T.
+    /// (using `extract_json_with_offset`), then attempts to deserialize that block into type `T`.
+    ///
+    /// If successful, only the consumed bytes are removed from the buffer so that extra text or
+    /// subsequent JSON objects remain for later parsing.
     pub async fn next<T: DeserializeOwned>(&mut self) -> Result<T, Error> {
         let mut chunk = [0u8; 1024];
 
         loop {
-            // Attempt to convert the current buffer to a UTF-8 string.
             if let Ok(text) = std::str::from_utf8(&self.buffer) {
-                if let Some(json_str) = extract_json(text) {
+                if let Some((json_str, consumed)) = extract_json_with_offset(text) {
                     match serde_json::from_str::<T>(&json_str) {
                         Ok(value) => {
-                            // Clear the buffer once successfully parsed.
-                            self.buffer.clear();
+                            // Remove only the consumed bytes from the buffer.
+                            self.buffer.drain(0..consumed);
                             return Ok(value);
                         }
                         // If the error indicates incomplete JSON, we continue reading.
                         Err(e) if e.classify() == Category::Eof => {}
-                        // Otherwise, if we get an error, we ignore it and read more.
+                        // Otherwise, if we get an error, ignore and read more.
                         Err(_) => {}
                     }
                 }
             }
-            // Read more data from the underlying stream.
             let bytes_read = self.reader.read(&mut chunk).await?;
             if bytes_read == 0 {
-                // No more data: make one last attempt at extraction.
+                // No more data—attempt one final extraction.
                 if let Ok(text) = std::str::from_utf8(&self.buffer) {
-                    if let Some(json_str) = extract_json(text) {
+                    if let Some((json_str, consumed)) = extract_json_with_offset(text) {
                         return serde_json::from_str::<T>(&json_str)
+                            .map(|v| {
+                                self.buffer.drain(0..consumed);
+                                v
+                            })
                             .map_err(|e| Error::new(ErrorKind::InvalidData, e));
                     }
                 }
@@ -117,13 +169,14 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
 }
 
 /// A custom asynchronous reader that receives data in chunks from a Tokio mpsc channel.
-/// This simulates a streaming source.
-struct ChannelReader {
+/// This simulates a streaming source (e.g. network data or an LLM response delivered in parts).
+pub struct ChannelReader {
     rx: mpsc::Receiver<Vec<u8>>,
     buffer: Vec<u8>,
 }
 
 impl ChannelReader {
+    /// Creates a new `ChannelReader` from the given mpsc receiver.
     pub fn new(rx: mpsc::Receiver<Vec<u8>>) -> Self {
         Self {
             rx,
@@ -150,78 +203,9 @@ impl AsyncRead for ChannelReader {
         let remaining = buf.remaining();
         let n = std::cmp::min(remaining, self.buffer.len());
         buf.put_slice(&self.buffer[..n]);
-        self.buffer.drain(..n);
+        self.buffer.drain(0..n);
         Poll::Ready(Ok(()))
     }
-}
-
-/// Main function simulating an AI agent that receives an LLM response containing extra text
-/// along with a JSON payload. The code extracts and parses the JSON into a Rust struct.
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Define the expected data structure from the LLM response.
-    #[derive(Debug, serde::Deserialize)]
-    struct Data {
-        name: String,
-        age: u32,
-        roles: Vec<String>,
-    }
-    #[derive(Debug, serde::Deserialize)]
-    struct LLMResponse {
-        status: String,
-        message: String,
-        data: Data,
-        timestamp: String,
-    }
-
-    // Simulate an LLM response with extra text surrounding the JSON.
-    let llm_response = r#"Certainly! Here's a simple JSON response example:
-
-json
-Copy
-[{
-  "status": "success",
-  "message": "Data retrieved successfully",
-  "data": {
-    "id": 123,
-    "name": "John Doe",
-    "email": "johndoe@example.com",
-    "age": 30,
-    "isActive": true,
-    "roles": ["user", "admin"],
-    "preferences": {
-      "theme": "dark",
-      "notifications": true
-    }
-  },
-  "timestamp": "2023-10-05T12:34:56Z"
-}]
-This JSON response includes a status, a message, some data about a user, and a timestamp. Let me know if you need a more specific or customized JSON response!"#;
-
-    // Simulate streaming by splitting the response into chunks.
-    let parts: Vec<Vec<u8>> = llm_response
-        .as_bytes()
-        .chunks(50)
-        .map(|chunk| chunk.to_vec())
-        .collect();
-
-    let (tx, rx) = mpsc::channel::<Vec<u8>>(10);
-    let reader = ChannelReader::new(rx);
-    let mut parser = AsyncJsonParser::new(reader);
-
-    // Spawn a background task that sends the parts with a small delay.
-    tokio::spawn(async move {
-        for part in parts {
-            tx.send(part).await.unwrap();
-            sleep(Duration::from_millis(50)).await;
-        }
-    });
-
-    println!("Waiting for the LLM response and extracting the JSON part...");
-    let response: Vec<LLMResponse> = parser.next().await?;
-    println!("Parsed LLM response:\n{:#?}", response);
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -230,7 +214,8 @@ mod tests {
     use tokio::io::BufReader;
     use std::io::Cursor;
     use tokio::sync::mpsc;
-    use tokio::time::sleep;
+    use tokio::time::{sleep, Duration};
+    
 
     #[derive(Debug, serde::Deserialize, PartialEq)]
     struct Person {
@@ -252,33 +237,22 @@ mod tests {
         timestamp: String,
     }
 
-    // --- Tests for extract_json function ---
+    // --- Tests for extract_json_with_offset ---
 
     #[test]
-    fn test_extract_json_valid() {
-        let text = "Some header text { \"key\": \"value\" } some footer text";
-        let extracted = extract_json(text).unwrap();
-        assert_eq!(extracted, "{ \"key\": \"value\" }");
+    fn test_extract_json_with_offset_object() {
+        let text = "Header { \"key\": \"value\" } Footer";
+        let (json, consumed) = extract_json_with_offset(text).unwrap();
+        assert_eq!(json, "{ \"key\": \"value\" }");
+        assert!(consumed > 0);
     }
 
     #[test]
-    fn test_extract_json_no_json() {
-        let text = "There is no JSON here.";
-        assert!(extract_json(text).is_none());
-    }
-
-    #[test]
-    fn test_extract_json_multiple_json() {
-        let text = "Pretext { \"first\": 1 } middle { \"second\": 2 } end";
-        let extracted = extract_json(text).unwrap();
-        assert_eq!(extracted, "{ \"first\": 1 }");
-    }
-
-    #[test]
-    fn test_extract_json_with_escaped_quotes() {
-        let text = r#"Prefix { "key": "a \"quoted\" value" } Suffix"#;
-        let extracted = extract_json(text).unwrap();
-        assert_eq!(extracted, r#"{ "key": "a \"quoted\" value" }"#);
+    fn test_extract_json_with_offset_array() {
+        let text = "Some text [1, 2, 3, 4] more text";
+        let (json, consumed) = extract_json_with_offset(text).unwrap();
+        assert_eq!(json, "[1, 2, 3, 4]");
+        assert!(consumed > 0);
     }
 
     // --- Tests for AsyncJsonParser with pure JSON ---
@@ -289,34 +263,16 @@ mod tests {
         let stream = BufReader::new(Cursor::new(data.to_vec()));
         let mut parser = AsyncJsonParser::new(stream);
         let person: Person = parser.next().await.unwrap();
-        assert_eq!(
-            person,
-            Person {
-                name: "Alice".to_string(),
-                age: 30
-            }
-        );
+        assert_eq!(person, Person { name: "Alice".into(), age: 30 });
     }
 
     #[tokio::test]
     async fn test_async_json_parser_multiple_chunks() {
-        let chunks: Vec<&[u8]> = vec![
-            b"{ \"name\": \"A",
-            b"lice\", \"age\":",
-            b" 30 }",
-        ];
-        let stream = BufReader::new(Cursor::new(
-            chunks.into_iter().flat_map(|s| s.to_vec()).collect::<Vec<u8>>(),
-        ));
+        let chunks: Vec<&[u8]> = vec![b"{ \"name\": \"A", b"lice\", \"age\":", b" 30 }"];
+        let stream = BufReader::new(Cursor::new(chunks.into_iter().flat_map(|s| s.to_vec()).collect::<Vec<u8>>()));
         let mut parser = AsyncJsonParser::new(stream);
         let person: Person = parser.next().await.unwrap();
-        assert_eq!(
-            person,
-            Person {
-                name: "Alice".to_string(),
-                age: 30
-            }
-        );
+        assert_eq!(person, Person { name: "Alice".into(), age: 30 });
     }
 
     #[tokio::test]
@@ -326,7 +282,7 @@ mod tests {
         let mut parser = AsyncJsonParser::new(stream);
         let result: Result<Person, _> = parser.next().await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().kind(), ErrorKind::UnexpectedEof);
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::UnexpectedEof);
     }
 
     #[tokio::test]
@@ -336,7 +292,7 @@ mod tests {
         let mut parser = AsyncJsonParser::new(stream);
         let result: Result<Person, _> = parser.next().await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().kind(), ErrorKind::InvalidData);
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidData);
     }
 
     #[tokio::test]
@@ -344,21 +300,13 @@ mod tests {
         let (tx, rx) = mpsc::channel::<Vec<u8>>(2);
         let reader = ChannelReader::new(rx);
         let mut parser = AsyncJsonParser::new(reader);
-
         tokio::spawn(async move {
             tx.send(b"{ \"name\": \"A".to_vec()).await.unwrap();
             sleep(Duration::from_millis(100)).await;
             tx.send(b"lice\", \"age\": 30 }".to_vec()).await.unwrap();
         });
-
         let person: Person = parser.next().await.unwrap();
-        assert_eq!(
-            person,
-            Person {
-                name: "Alice".to_string(),
-                age: 30
-            }
-        );
+        assert_eq!(person, Person { name: "Alice".into(), age: 30 });
     }
 
     #[tokio::test]
@@ -366,33 +314,15 @@ mod tests {
         let (tx, rx) = mpsc::channel::<Vec<u8>>(2);
         let reader = ChannelReader::new(rx);
         let mut parser = AsyncJsonParser::new(reader);
-
         tokio::spawn(async move {
-            tx.send(b"{\"name\":\"Alice\", \"age\": 30}".to_vec())
-                .await
-                .unwrap();
+            tx.send(b"{\"name\":\"Alice\", \"age\": 30}".to_vec()).await.unwrap();
             sleep(Duration::from_millis(50)).await;
-            tx.send(b"{\"name\":\"Bob\", \"age\": 25}".to_vec())
-                .await
-                .unwrap();
+            tx.send(b"{\"name\":\"Bob\", \"age\": 25}".to_vec()).await.unwrap();
         });
-
         let person1: Person = parser.next().await.unwrap();
-        assert_eq!(
-            person1,
-            Person {
-                name: "Alice".to_string(),
-                age: 30
-            }
-        );
+        assert_eq!(person1, Person { name: "Alice".into(), age: 30 });
         let person2: Person = parser.next().await.unwrap();
-        assert_eq!(
-            person2,
-            Person {
-                name: "Bob".to_string(),
-                age: 25
-            }
-        );
+        assert_eq!(person2, Person { name: "Bob".into(), age: 25 });
     }
 
     #[tokio::test]
@@ -403,7 +333,7 @@ mod tests {
         let mut parser = AsyncJsonParser::new(stream);
         let result: Result<Person, _> = parser.next().await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().kind(), ErrorKind::UnexpectedEof);
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::UnexpectedEof);
     }
 
     #[tokio::test]
@@ -413,17 +343,14 @@ mod tests {
         let mid = json_str.len() / 2;
         let part1 = json_str[..mid].as_bytes().to_vec();
         let part2 = json_str[mid..].as_bytes().to_vec();
-
         let (tx, rx) = mpsc::channel::<Vec<u8>>(2);
         let reader = ChannelReader::new(rx);
         let mut parser = AsyncJsonParser::new(reader);
-
         tokio::spawn(async move {
             tx.send(part1).await.unwrap();
             sleep(Duration::from_millis(50)).await;
             tx.send(part2).await.unwrap();
         });
-
         let result: Vec<i32> = parser.next().await.unwrap();
         assert_eq!(result, expected);
     }
@@ -434,13 +361,7 @@ mod tests {
         let stream = BufReader::new(Cursor::new(data.to_vec()));
         let mut parser = AsyncJsonParser::new(stream);
         let person: Person = parser.next().await.unwrap();
-        assert_eq!(
-            person,
-            Person {
-                name: "Alice".to_string(),
-                age: 30
-            }
-        );
+        assert_eq!(person, Person { name: "Alice".into(), age: 30 });
     }
 
     // --- Tests for LLM response extraction (extra text around JSON) ---
@@ -469,24 +390,20 @@ Copy
   "timestamp": "2023-10-05T12:34:56Z"
 }
 This JSON response includes a status, a message, some data about a user, and a timestamp. Let me know if you need a more specific or customized JSON response!"#;
-
         let parts: Vec<Vec<u8>> = llm_response
             .as_bytes()
             .chunks(30)
             .map(|chunk| chunk.to_vec())
             .collect();
-
         let (tx, rx) = mpsc::channel::<Vec<u8>>(10);
         let reader = ChannelReader::new(rx);
         let mut parser = AsyncJsonParser::new(reader);
-
         tokio::spawn(async move {
             for part in parts {
                 tx.send(part).await.unwrap();
                 sleep(Duration::from_millis(10)).await;
             }
         });
-
         let response: LLMResponse = parser.next().await.unwrap();
         assert_eq!(response.status, "success");
         assert_eq!(response.data.name, "John Doe");
@@ -494,7 +411,6 @@ This JSON response includes a status, a message, some data about a user, and a t
 
     #[tokio::test]
     async fn test_async_json_parser_with_extra_text() {
-        // Simulate extra text before and after the JSON.
         let text = r#"Some header info...
 Here is the JSON:
 {
@@ -510,21 +426,13 @@ And here is some footer text."#;
         let (tx, rx) = mpsc::channel::<Vec<u8>>(10);
         let reader = ChannelReader::new(rx);
         let mut parser = AsyncJsonParser::new(reader);
-
         tokio::spawn(async move {
             for part in parts {
                 tx.send(part).await.unwrap();
                 sleep(Duration::from_millis(20)).await;
             }
         });
-
         let person: Person = parser.next().await.unwrap();
-        assert_eq!(
-            person,
-            Person {
-                name: "Alice".to_string(),
-                age: 30
-            }
-        );
+        assert_eq!(person, Person { name: "Alice".into(), age: 30 });
     }
 }
