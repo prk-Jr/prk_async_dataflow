@@ -18,7 +18,17 @@ mod tests {
     struct Data {
         id: u32,
         name: String,
+        roles: Vec<String>, 
+        enum_check: EnumCheck,
     }
+    
+    #[derive(Debug, serde::Deserialize, PartialEq)]
+    #[serde(rename_all = "snake_case")]
+    enum EnumCheck {
+        Value1, 
+        Value2, 
+    } 
+
 
     #[derive(Debug, serde::Deserialize, PartialEq)]
     struct LLMResponse {
@@ -172,6 +182,7 @@ Copy
     "email": "johndoe@example.com",
     "age": 30,
     "isActive": true,
+    "enum_check": "value2",
     "roles": ["user", "admin"],
     "preferences": {
       "theme": "dark",
@@ -196,6 +207,7 @@ This JSON response includes a status, a message, some data about a user, and a t
             }
         });
         let response: LLMResponse = parser.next().await.unwrap();
+        dbg!(&response);
         assert_eq!(response.status, "success");
         assert_eq!(response.data.name, "John Doe");
     }
