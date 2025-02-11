@@ -88,11 +88,13 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
     }
 
     #[instrument(skip(self))]
-    #[instrument(skip(self))]
     async fn fill_buffer(&mut self) -> Result<(), JsonParserError> {
-        let mut chunk = vec![0u8; self.config.buffer_size];
+        let start_len = self.buffer.len();
+        self.buffer.resize(start_len + self.config.buffer_size, 0);
 
-        let read_fut = self.reader.read(&mut chunk);
+        let mut read_buf = tokio::io::ReadBuf::new(&mut self.buffer[start_len..]);
+        let read_fut = self.reader.read_buf(&mut read_buf);
+
         let bytes_read = match self.config.timeout {
             Some(t) => timeout(t, read_fut)
                 .await
@@ -100,12 +102,13 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
             None => read_fut.await?,
         };
 
+        self.buffer.truncate(start_len + bytes_read);
+
         if bytes_read == 0 {
             debug!("Reached end of input stream");
             return Err(JsonParserError::IncompleteData);
         }
 
-        self.buffer.extend_from_slice(&chunk[..bytes_read]);
         debug!(
             "Read {} bytes into buffer (total: {})",
             bytes_read,
@@ -130,8 +133,11 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
             // Attempt zero-copy parsing if the buffer is valid UTF-8
             if let Ok(slice) = std::str::from_utf8(&self.buffer) {
                 if let Some((json_str, consumed)) = extract_json(slice) {
-                    debug!("Found JSON candidate: {}", &json_str[..json_str.len().min(50)]);
-    
+                    debug!(
+                        "Found JSON candidate: {}",
+                        &json_str[..json_str.len().min(50)]
+                    );
+
                     match serde_json::from_str::<T>(json_str) {
                         Ok(value) => {
                             self.buffer.advance(consumed);
@@ -145,7 +151,7 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                                 self.buffer.advance(consumed);
                                 return Ok(serde_json::from_value(value)?);
                             }
-    
+
                             #[cfg(feature = "relaxed")]
                             {
                                 if let Ok(value) = json5::from_str::<T>(json_str) {
@@ -153,7 +159,7 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                                     return Ok(value);
                                 }
                             }
-    
+
                             warn!("JSON parsing failed: {}", e);
                             return Err(JsonParserError::InvalidData(format!(
                                 "JSON parsing error: {}. Input: {}...",
@@ -164,12 +170,15 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                     }
                 }
             }
-    
+
             // If the buffer is not valid UTF-8, fall back to lossy conversion
             let text = String::from_utf8_lossy(&self.buffer);
             if let Some((json_str, consumed)) = extract_json(&text) {
-                debug!("Found JSON candidate (lossy): {}", &json_str[..json_str.len().min(50)]);
-    
+                debug!(
+                    "Found JSON candidate (lossy): {}",
+                    &json_str[..json_str.len().min(50)]
+                );
+
                 match serde_json::from_str::<T>(&json_str) {
                     Ok(value) => {
                         self.buffer.advance(consumed);
@@ -183,7 +192,7 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                             self.buffer.advance(consumed);
                             return Ok(serde_json::from_value(value)?);
                         }
-    
+
                         #[cfg(feature = "relaxed")]
                         {
                             if let Ok(value) = json5::from_str::<T>(&json_str) {
@@ -191,7 +200,7 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                                 return Ok(value);
                             }
                         }
-    
+
                         warn!("JSON parsing failed: {}", e);
                         return Err(JsonParserError::InvalidData(format!(
                             "JSON parsing error: {}. Input: {}...",
@@ -201,7 +210,7 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                     }
                 }
             }
-    
+
             // If no JSON is found, read more data
             self.fill_buffer().await?;
         }
