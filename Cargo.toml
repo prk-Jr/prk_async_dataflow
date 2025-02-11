@@ -1,5 +1,5 @@
 [package]
-name = "async_serde"
+name = "prk_async_dataflow"
 version = "0.1.0"
 edition = "2021"
 

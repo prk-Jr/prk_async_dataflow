@@ -21,8 +21,8 @@
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Create a channel to simulate streaming input.
 //!     let (tx, rx) = mpsc::channel::<Vec<u8>>(10);
-//!     let reader = async_serde::ChannelReader::new(rx);
-//!     let mut parser = async_serde::AsyncJsonParser::new(reader);
+//!     let reader = prk_async_dataflow::ChannelReader::new(rx);
+//!     let mut parser = prk_async_dataflow::AsyncJsonParser::new(reader);
 //!
 //!     // Simulate sending a JSON response with extra text in parts.
 //!     tokio::spawn(async move {
