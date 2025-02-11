@@ -36,11 +36,12 @@ pub enum JsonParserError {
 }
 
 /// Configuration for the JSON parser
-#[derive(Debug, Clone)]
 pub struct ParserConfig {
     pub buffer_size: usize,
     pub timeout: Option<Duration>,
     pub max_buffer_size: usize,
+    pub fallback_parser:
+        Option<Box<dyn Fn(&str) -> Result<serde_json::Value, JsonParserError> + Send + Sync>>,
 }
 
 impl Default for ParserConfig {
@@ -49,6 +50,7 @@ impl Default for ParserConfig {
             buffer_size: 1024,
             timeout: None,
             max_buffer_size: 1024 * 1024, // 1MB
+            fallback_parser: None,
         }
     }
 }
@@ -103,6 +105,12 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
         }
 
         self.buffer.extend_from_slice(&chunk[..bytes_read]);
+        debug!(
+            "Read {} bytes into buffer (total: {})",
+            bytes_read,
+            self.buffer.len()
+        );
+
         if self.buffer.len() > self.config.max_buffer_size {
             warn!(
                 "Buffer size exceeded limit: {} > {}",
@@ -118,7 +126,6 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
     #[instrument(skip(self))]
     pub async fn next<T: DeserializeOwned>(&mut self) -> Result<T, JsonParserError> {
         loop {
-            // Try to parse from existing buffer
             let text = String::from_utf8_lossy(&self.buffer);
             if let Some((json_str, consumed)) = extract_json(&text) {
                 debug!(
@@ -128,11 +135,21 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
 
                 match serde_json::from_str::<T>(&json_str) {
                     Ok(value) => {
+                        debug!("Successfully parsed JSON");
                         self.buffer.advance(consumed);
                         return Ok(value);
                     }
                     Err(e) if e.classify() == Category::Eof => {}
                     Err(e) => {
+                        warn!("JSON parsing failed: {}", e);
+
+                        // Try the fallback parser if provided
+                        if let Some(fallback) = &self.config.fallback_parser {
+                            let value = fallback(&json_str)?;
+                            self.buffer.advance(consumed);
+                            return Ok(serde_json::from_value(value)?);
+                        }
+
                         #[cfg(feature = "relaxed")]
                         {
                             if let Ok(value) = json5::from_str::<T>(&json_str) {
@@ -140,6 +157,7 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                                 return Ok(value);
                             }
                         }
+
                         warn!("JSON parsing failed: {}", e);
                         return Err(JsonParserError::InvalidData(format!(
                             "JSON parsing error: {}. Input: {}...",
@@ -150,7 +168,6 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                 }
             }
 
-            // If we didn't find anything, read more data
             self.fill_buffer().await?;
         }
     }
@@ -173,12 +190,13 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                 });
             }
 
-            // If no newline, check if we've reached the end of the stream
+            // If buffer is empty, attempt to read more data
             if self.buffer.is_empty() {
-                return Err(JsonParserError::IncompleteData);
+                self.fill_buffer().await?;
+                continue;
             }
 
-            // If no newline but there's data, try parsing the remaining buffer as a single JSON object
+            // Try parsing the remaining buffer as a single JSON object
             let remaining = String::from_utf8_lossy(&self.buffer);
             let trimmed = remaining.trim();
 
@@ -194,7 +212,7 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                 return result;
             }
 
-            // If we didn't find anything, read more data
+            // If parsing failed, read more data
             self.fill_buffer().await?;
         }
     }
