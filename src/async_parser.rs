@@ -88,6 +88,7 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
     }
 
     #[instrument(skip(self))]
+    #[instrument(skip(self))]
     async fn fill_buffer(&mut self) -> Result<(), JsonParserError> {
         let mut chunk = vec![0u8; self.config.buffer_size];
 
@@ -126,30 +127,63 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
     #[instrument(skip(self))]
     pub async fn next<T: DeserializeOwned>(&mut self) -> Result<T, JsonParserError> {
         loop {
+            // Attempt zero-copy parsing if the buffer is valid UTF-8
+            if let Ok(slice) = std::str::from_utf8(&self.buffer) {
+                if let Some((json_str, consumed)) = extract_json(slice) {
+                    debug!("Found JSON candidate: {}", &json_str[..json_str.len().min(50)]);
+    
+                    match serde_json::from_str::<T>(json_str) {
+                        Ok(value) => {
+                            self.buffer.advance(consumed);
+                            return Ok(value);
+                        }
+                        Err(e) if e.classify() == Category::Eof => {}
+                        Err(e) => {
+                            // Fallback to custom parser or JSON5 if enabled
+                            if let Some(fallback) = &self.config.fallback_parser {
+                                let value = fallback(json_str)?;
+                                self.buffer.advance(consumed);
+                                return Ok(serde_json::from_value(value)?);
+                            }
+    
+                            #[cfg(feature = "relaxed")]
+                            {
+                                if let Ok(value) = json5::from_str::<T>(json_str) {
+                                    self.buffer.advance(consumed);
+                                    return Ok(value);
+                                }
+                            }
+    
+                            warn!("JSON parsing failed: {}", e);
+                            return Err(JsonParserError::InvalidData(format!(
+                                "JSON parsing error: {}. Input: {}...",
+                                e,
+                                &json_str[..json_str.len().min(100)]
+                            )));
+                        }
+                    }
+                }
+            }
+    
+            // If the buffer is not valid UTF-8, fall back to lossy conversion
             let text = String::from_utf8_lossy(&self.buffer);
             if let Some((json_str, consumed)) = extract_json(&text) {
-                debug!(
-                    "Found JSON candidate: {}",
-                    &json_str[..json_str.len().min(50)]
-                );
-
+                debug!("Found JSON candidate (lossy): {}", &json_str[..json_str.len().min(50)]);
+    
                 match serde_json::from_str::<T>(&json_str) {
                     Ok(value) => {
-                        debug!("Successfully parsed JSON");
                         self.buffer.advance(consumed);
                         return Ok(value);
                     }
                     Err(e) if e.classify() == Category::Eof => {}
                     Err(e) => {
-                        warn!("JSON parsing failed: {}", e);
-
-                        // Try the fallback parser if provided
+                        // Fallback to custom parser or JSON5 if enabled
                         if let Some(fallback) = &self.config.fallback_parser {
                             let value = fallback(&json_str)?;
                             self.buffer.advance(consumed);
                             return Ok(serde_json::from_value(value)?);
                         }
-
+    
                         #[cfg(feature = "relaxed")]
                         {
                             if let Ok(value) = json5::from_str::<T>(&json_str) {
@@ -157,7 +191,7 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                                 return Ok(value);
                             }
                         }
-
+    
                         warn!("JSON parsing failed: {}", e);
                         return Err(JsonParserError::InvalidData(format!(
                             "JSON parsing error: {}. Input: {}...",
@@ -167,7 +201,8 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                     }
                 }
             }
-
+    
+            // If no JSON is found, read more data
             self.fill_buffer().await?;
         }
     }
@@ -178,16 +213,22 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
             // Check if there's a newline in the buffer
             if let Some(pos) = self.buffer.iter().position(|&b| b == b'\n') {
                 let line = self.buffer.split_to(pos + 1);
-                let line_str = String::from_utf8_lossy(&line);
-                let trimmed = line_str.trim();
 
-                if trimmed.is_empty() {
-                    continue;
+                // Attempt zero-copy parsing if the line is valid UTF-8
+                if let Ok(line_str) = std::str::from_utf8(&line) {
+                    let trimmed = line_str.trim();
+
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+
+                    return serde_json::from_str(trimmed).map_err(|e| {
+                        JsonParserError::InvalidData(format!(
+                            "NDJSON error: {}. Line: {}",
+                            e, trimmed
+                        ))
+                    });
                 }
-
-                return serde_json::from_str(trimmed).map_err(|e| {
-                    JsonParserError::InvalidData(format!("NDJSON error: {}. Line: {}", e, trimmed))
-                });
             }
 
             // If buffer is empty, attempt to read more data
@@ -197,19 +238,23 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
             }
 
             // Try parsing the remaining buffer as a single JSON object
-            let remaining = String::from_utf8_lossy(&self.buffer);
-            let trimmed = remaining.trim();
+            if let Ok(remaining) = std::str::from_utf8(&self.buffer) {
+                let trimmed = remaining.trim();
 
-            if !trimmed.is_empty() {
-                let result = serde_json::from_str::<T>(trimmed).map_err(|e| {
-                    JsonParserError::InvalidData(format!("NDJSON error: {}. Line: {}", e, trimmed))
-                });
+                if !trimmed.is_empty() {
+                    let result = serde_json::from_str::<T>(trimmed).map_err(|e| {
+                        JsonParserError::InvalidData(format!(
+                            "NDJSON error: {}. Line: {}",
+                            e, trimmed
+                        ))
+                    });
 
-                if result.is_ok() {
-                    self.buffer.clear();
+                    if result.is_ok() {
+                        self.buffer.clear();
+                    }
+
+                    return result;
                 }
-
-                return result;
             }
 
             // If parsing failed, read more data

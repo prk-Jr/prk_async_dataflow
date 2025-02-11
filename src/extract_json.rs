@@ -1,10 +1,9 @@
-/// Enhanced version with better error reporting
-pub fn extract_json(text: &str) -> Option<(String, usize)> {
+pub fn extract_json(text: &str) -> Option<(&str, usize)> {
     let text = text.trim_start();
     let start = text.find(|c: char| c == '{' || c == '[')?;
     let text_slice = &text[start..];
     let first_char = text_slice.chars().next()?;
-    
+
     let (opening, closing) = match first_char {
         '{' => ('{', '}'),
         '[' => ('[', ']'),
@@ -31,14 +30,11 @@ pub fn extract_json(text: &str) -> Option<(String, usize)> {
             }
             _ => {}
         }
-        
+
         if escape && c != '\\' {
             escape = false;
         }
     }
 
-    end.map(|e| {
-        let json_str = text[start..start + e].to_string();
-        (json_str, start + e)
-    })
+    end.map(|e| (&text[start..start + e], start + e))
 }
