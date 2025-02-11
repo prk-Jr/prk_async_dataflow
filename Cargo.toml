@@ -1,17 +1,20 @@
 [package]
-name = "async_serde"
+name = "prk_async_dataflow"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-serde = {version = "1.0.217", features = ["derive"]}
+serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.138"
-tokio = {version = "1.43.0", features = ["full"]}
-json5 ={ version = "0.4.1", optional = true}
-
+tokio = { version = "1.43.0", features = ["full", "time"] }
+json5 = { version = "0.4.1", optional = true }
+tokio-stream = "0.1.14"
+tracing = "0.1.40"
+bytes = "1.5.0"  # For efficient buffering
+thiserror = "2.0.11"
 
 [dev-dependencies]
-tokio = { version = "1.43.0", features = ["full", "test-util"] }
+tokio = { version = "1.43.0", features = ["full", "test-util", "rt-multi-thread"] }
 
 [features]
 relaxed = ["json5"]
