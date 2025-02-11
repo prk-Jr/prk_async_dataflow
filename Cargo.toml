@@ -2,6 +2,11 @@
 name = "prk_async_dataflow"
 version = "0.1.0"
 edition = "2021"
+description = "An asynchronous dataflow processing library for Rust to parse JSON/NDJSON streams."
+keywords = ["async", "dataflow", "json", "ndjson", "tokio"]
+license = "MIT"
+categories = ["asynchronous", "parsing"]
+repository = "https://github.com/prk-Jr/prk_async_dataflow"
 
 [dependencies]
 serde = { version = "1.0.217", features = ["derive"] }
