@@ -18,6 +18,7 @@ pub fn extract_json(text: &str) -> Option<(&str, usize)> {
     for (i, c) in text_slice.char_indices() {
         match (in_string, escape, c) {
             (true, false, '\\') => escape = true,
+            (true, true, _) => escape = false,
             (true, false, '"') => in_string = false,
             (false, _, '"') => in_string = true,
             (false, _, c) if c == opening => count += 1,
@@ -29,10 +30,6 @@ pub fn extract_json(text: &str) -> Option<(&str, usize)> {
                 }
             }
             _ => {}
-        }
-
-        if escape && c != '\\' {
-            escape = false;
         }
     }
 

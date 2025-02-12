@@ -42,6 +42,7 @@ pub struct ParserConfig {
     pub max_buffer_size: usize,
     pub fallback_parser:
         Option<Box<dyn Fn(&str) -> Result<serde_json::Value, JsonParserError> + Send + Sync>>,
+    pub skip_invalid: bool,
 }
 
 impl Default for ParserConfig {
@@ -51,6 +52,7 @@ impl Default for ParserConfig {
             timeout: None,
             max_buffer_size: 1024 * 1024, // 1MB
             fallback_parser: None,
+            skip_invalid: false,
         }
     }
 }
@@ -161,11 +163,17 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                             }
 
                             warn!("JSON parsing failed: {}", e);
-                            return Err(JsonParserError::InvalidData(format!(
-                                "JSON parsing error: {}. Input: {}...",
-                                e,
-                                &json_str[..json_str.len().min(100)]
-                            )));
+                            if self.config.skip_invalid {
+                                warn!("Skipping invalid JSON: {}", e);
+                                self.buffer.advance(consumed);
+                                continue;
+                            } else {
+                                return Err(JsonParserError::InvalidData(format!(
+                                    "JSON parsing error: {}. Input: {}...",
+                                    e,
+                                    &json_str[..json_str.len().min(100)]
+                                )));
+                            }
                         }
                     }
                 }
@@ -202,11 +210,17 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                         }
 
                         warn!("JSON parsing failed: {}", e);
-                        return Err(JsonParserError::InvalidData(format!(
-                            "JSON parsing error: {}. Input: {}...",
-                            e,
-                            &json_str[..json_str.len().min(100)]
-                        )));
+                        if self.config.skip_invalid {
+                            warn!("Skipping invalid JSON: {}", e);
+                            self.buffer.advance(consumed);
+                            continue;
+                        } else {
+                            return Err(JsonParserError::InvalidData(format!(
+                                "JSON parsing error: {}. Input: {}...",
+                                e,
+                                &json_str[..json_str.len().min(100)]
+                            )));
+                        }
                     }
                 }
             }
