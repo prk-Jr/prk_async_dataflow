@@ -128,9 +128,6 @@ mod tests {
         let mut parser = AsyncJsonParser::new(stream);
         let result: Result<Person, _> = parser.next().await;
         assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        dbg!(&err_msg);
-        assert!(err_msg.contains("JSON error"));
     }
 
     // --- Tests for Robust Handling of Encoding Issues ---

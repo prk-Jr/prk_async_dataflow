@@ -1,4 +1,3 @@
-
 pub fn extract_json(bytes: &[u8]) -> Option<(&[u8], usize)> {
     let bytes = skip_whitespace(bytes);
     if bytes.is_empty() {
@@ -9,7 +8,7 @@ pub fn extract_json(bytes: &[u8]) -> Option<(&[u8], usize)> {
     let start = bytes.iter().position(|&c| c == b'{' || c == b'[')?;
     let bytes_slice = &bytes[start..];
 
-    // Extract the JSON object or array
+    // Enhanced extraction with JSON5 support
     if let Some((json, consumed)) = extract_single_json(bytes_slice) {
         return Some((json, start + consumed));
     }
@@ -40,9 +39,37 @@ fn extract_single_json(bytes: &[u8]) -> Option<(&[u8], usize)> {
     let mut count = 0i32;
     let mut in_string = false;
     let mut escape = false;
+    let mut in_single_line_comment = false;
+    let mut in_multi_line_comment = false;
     let mut end = None;
 
     for (i, &c) in bytes_slice.iter().enumerate() {
+        // Handle comments (JSON5 feature)
+        if !in_string && !in_multi_line_comment && !in_single_line_comment {
+            if c == b'/' && i < bytes_slice.len() - 1 {
+                match bytes_slice[i + 1] {
+                    b'/' => in_single_line_comment = true,
+                    b'*' => in_multi_line_comment = true,
+                    _ => {}
+                }
+            }
+        }
+
+        if in_single_line_comment {
+            if c == b'\n' {
+                in_single_line_comment = false;
+            }
+            continue;
+        }
+
+        if in_multi_line_comment {
+            if c == b'*' && i < bytes_slice.len() - 1 && bytes_slice[i + 1] == b'/' {
+                in_multi_line_comment = false;
+            }
+            continue;
+        }
+
+        // Main JSON parsing logic
         match (in_string, escape, c) {
             (true, false, b'\\') => escape = true,
             (true, true, _) => escape = false,
@@ -63,15 +90,12 @@ fn extract_single_json(bytes: &[u8]) -> Option<(&[u8], usize)> {
     end.map(|e| (&bytes_slice[..e], start + e))
 }
 
-// New function to handle both single Post and Vec<Post>
-use simd_json::OwnedValue;
-
-pub fn extract_json_value(bytes: &[u8]) -> Option<OwnedValue> {
+// Add JSON5 parsing support
+#[cfg(feature = "relaxed")]
+pub fn extract_json5_value(bytes: &[u8]) -> Option<simd_json::OwnedValue> {
     if let Some((json, _)) = extract_json(bytes) {
-        // Convert the slice to a mutable Vec<u8> (required by simd_json)
-        let mut json_vec = json.to_vec();
-        // Parse the JSON using simd_json
-        simd_json::to_owned_value(&mut json_vec).ok()
+        let  json_vec = json.to_vec();
+        json5::from_str(std::str::from_utf8(&json_vec).ok()?).ok()
     } else {
         None
     }

@@ -30,66 +30,51 @@ If you require JSON5 (relaxed mode) support, enable the feature as shown:
   prk_async_dataflow = { version = "0.2.0", features = ["relaxed"] }
 ```
 Usage Example:
-The following example demonstrates how to create a simple TCP server that uses prk_async_dataflow to asynchronously parse incoming JSON messages (for instance, chat messages):
 
 ------------------------------------------------------------
 ```rust
-use tokio::{
-    io::BufReader,
-    net::TcpListener,
-    sync::mpsc,
-};
-use tokio_stream::StreamExt;
-use prk_async_dataflow::AsyncJsonParser;
-use serde::Deserialize;
-use tracing_subscriber;
+use std::io::Cursor;
 
-#[derive(Deserialize, Debug)]
-struct ChatMessage {
-    username: String,
-    message: String,
+use prk_async_dataflow::{AsyncJsonParser, ParserConfig};
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct MyData {
+    id: u32,
+    name: String,
 }
 
+async fn batch_parse(data: &[u8]) {
+    let reader = Cursor::new(data);
+    let config = ParserConfig {
+        batch_size: 2,
+        ..Default::default()
+    };
+    let mut parser = AsyncJsonParser::with_config(reader, config);
+
+    let batch = parser.next_batch::<MyData>().await.unwrap();
+    println!("Parsed batch: {:?}", batch);
+}
+
+
+
+// To Run: cargo run --features relaxed --example parser
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logging (optional)
-    tracing_subscriber::fmt::init();
-
-    // Bind the TCP listener to a local address
-    let listener = TcpListener::bind("127.0.0.1:8080").await?;
-    println!("Server listening on 127.0.0.1:8080");
-
-    loop {
-        // Accept incoming connections
-        let (socket, addr) = listener.accept().await?;
-        println!("Accepted connection from: {}", addr);
-
-        // Spawn a new task for each connection
-        tokio::spawn(async move {
-            // Wrap the socket with a buffered reader
-            let reader = BufReader::new(socket);
-            // Create an instance of the AsyncJsonParser
-            let mut parser = AsyncJsonParser::new(reader);
-            // Convert the parser into an asynchronous stream of ChatMessage items
-            let mut json_stream = parser.into_stream::<ChatMessage>();
-
-            // Process each JSON message as it arrives
-            while let Some(result) = json_stream.next().await {
-                match result {
-                    Ok(chat_msg) => {
-                        println!("Received message from {}: {:?}", addr, chat_msg);
-                        // Additional processing (such as broadcasting) could be added here
-                    }
-                    Err(err) => {
-                        eprintln!("Error parsing JSON from {}: {}", addr, err);
-                        // Optionally close the connection on error
-                        break;
-                    }
-                }
-            }
-            println!("Connection with {} closed.", addr);
-        });
-    }
+async fn main() {
+    let data = r#"{"id": 1, "name": "Alice"}\n{"id": 2, "name": "Bob"}"#.as_bytes();
+    batch_parse(data).await;
+    let data = r#"{"id": 2, "name": "Charlie"}{"id": 2, "name": "Bob"}"#.as_bytes();
+    batch_parse(data).await;
+    let data = r#"
+    Here is your response:
+    {"id": 1, "name": "Alice"}
+    Some dummy data
+    {"id": 2, "name": "Bob"}"#.as_bytes();
+    batch_parse(data).await;
+    let data = r#"
+    b"Here is your response:{name:'Prakash', id:30, extra:'remove me', yap:'   noisy message   '}"
+"#.as_bytes();
+    batch_parse(data).await;
 }
 ```
 
