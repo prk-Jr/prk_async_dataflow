@@ -1,9 +1,10 @@
 // use serde_json::Value;
-use simd_json::{derived::MutableObject, borrowed::Value};
+use simd_json::derived::MutableObject;
 use std::collections::HashMap;
+use simd_json::borrowed::Value;
 
 pub struct FeatureTransformer {
-    pub mappings: HashMap<String, Box<dyn Fn(Value) -> Value>>,
+    pub mappings: HashMap<String, Box<dyn Fn(Value) -> Value + Send + Sync>>,
 }
 
 impl FeatureTransformer {
@@ -13,7 +14,7 @@ impl FeatureTransformer {
         }
     }
 
-    pub fn add_mapping(&mut self, key: String, transform: Box<dyn Fn(Value) -> Value>) {
+    pub fn add_mapping(&mut self, key: String, transform: Box<dyn Fn(Value) -> Value + Send + Sync>) {
         self.mappings.insert(key, transform);
     }
 

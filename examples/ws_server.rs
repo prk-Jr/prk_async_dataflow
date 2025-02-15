@@ -1,41 +1,13 @@
 use futures::{SinkExt, StreamExt};
+use prk_async_dataflow::FeatureTransformer;
 use reqwest::Url;
 use simd_json::base::ValueAsScalar;
-use simd_json::derived::MutableObject;
-use std::collections::HashMap;
 use tokio::net::TcpListener;
 use tokio::task;
 use tokio::time::{sleep, Duration};
 use tokio_tungstenite::{accept_async, connect_async, tungstenite::protocol::Message};
 use simd_json::borrowed::Value;
 
-/// FeatureTransformer from your transformer.rs.
-/// It maps a given key to a transformation function.
-pub struct FeatureTransformer {
-    pub mappings: HashMap<String, Box<dyn Fn(Value) -> Value + Send + Sync>>,
-}
-
-impl FeatureTransformer {
-    pub fn new() -> Self {
-        Self {
-            mappings: HashMap::new(),
-        }
-    }
-
-    pub fn add_mapping(&mut self, key: String, transform: Box<dyn Fn(Value) -> Value + Send + Sync>) {
-        self.mappings.insert(key, transform);
-    }
-
-    pub fn transform<'a>(&self, data: Value<'a>) -> Value<'a> {
-        let mut result = data.clone();
-        for (key, transform) in &self.mappings {
-            if let Some(value) = result.get_mut(key.as_str()) {
-                *value = transform(value.clone());
-            }
-        }
-        result
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
