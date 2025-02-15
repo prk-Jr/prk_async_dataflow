@@ -230,10 +230,15 @@ This JSON response includes a status, a message, and some data about a user."#;
     async fn test_async_json_parser_with_extra_text() {
         let text = r#"Some header info...
 Here is the JSON:
-{
-  "name": "Alice",
-  "age": 30
-}
+Here is your data:
+    {
+      "name": "60c7cfb8-b2f1-4e80-b1f1-f8577d52ac7d",
+      "age": 24
+    },
+    {
+      "name": "6dc895e3-8d8a-4214-8e9d-8f331d7f0d7b",
+      "age": 37
+    },
 And here is some footer text."#;
         let parts: Vec<Vec<u8>> = text
             .as_bytes()
@@ -253,8 +258,8 @@ And here is some footer text."#;
         assert_eq!(
             person,
             Person {
-                name: "Alice".into(),
-                age: 30
+                name: "60c7cfb8-b2f1-4e80-b1f1-f8577d52ac7d".into(),
+                age: 24
             }
         );
     }

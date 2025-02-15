@@ -1,5 +1,20 @@
 pub fn extract_json(text: &str) -> Option<(&str, usize)> {
     let text = text.trim_start();
+    
+    // Handle NDJSON case (single line)
+    if let Some(pos) = text.find('\n') {
+        let line = &text[..pos];
+        if let Some(json) = extract_single_json(line) {
+            return Some((json.0, pos + 1));
+        }
+    }
+    
+    // Handle multi-line JSON
+    extract_single_json(text)
+}
+
+fn extract_single_json(text: &str) -> Option<(&str, usize)> {
+    let text = text.trim_start();
     let start = text.find(|c: char| c == '{' || c == '[')?;
     let text_slice = &text[start..];
     let first_char = text_slice.chars().next()?;

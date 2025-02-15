@@ -1,4 +1,5 @@
 use bytes::{Buf, BytesMut};
+use memchr::memchr;
 use serde::de::DeserializeOwned;
 use serde_json::{self, error::Category};
 use std::future::Future;
@@ -92,39 +93,29 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
     #[instrument(skip(self))]
     async fn fill_buffer(&mut self) -> Result<(), JsonParserError> {
         let start_len = self.buffer.len();
-        self.buffer.resize(start_len + self.config.buffer_size, 0);
+        self.buffer.reserve(self.config.buffer_size);
 
-        let mut read_buf = tokio::io::ReadBuf::new(&mut self.buffer[start_len..]);
-        let read_fut = self.reader.read_buf(&mut read_buf);
+        unsafe {
+            // Safety: We're using the spare capacity before setting the length
+            let spare = self.buffer.spare_capacity_mut();
+            let mut read_buf = tokio::io::ReadBuf::uninit(spare);
 
-        let bytes_read = match self.config.timeout {
-            Some(t) => timeout(t, read_fut)
-                .await
-                .map_err(|_| JsonParserError::Timeout)??,
-            None => read_fut.await?,
-        };
+            let read_fut = self.reader.read_buf(&mut read_buf);
+            let bytes_read = match self.config.timeout {
+                Some(t) => timeout(t, read_fut)
+                    .await
+                    .map_err(|_| JsonParserError::Timeout)??,
+                None => read_fut.await?,
+            };
 
-        self.buffer.truncate(start_len + bytes_read);
+            self.buffer.set_len(start_len + bytes_read);
 
-        if bytes_read == 0 {
-            debug!("Reached end of input stream");
-            return Err(JsonParserError::IncompleteData);
+            if bytes_read == 0 {
+                return Err(JsonParserError::IncompleteData);
+            }
         }
 
-        debug!(
-            "Read {} bytes into buffer (total: {})",
-            bytes_read,
-            self.buffer.len()
-        );
-
-        if self.buffer.len() > self.config.max_buffer_size {
-            warn!(
-                "Buffer size exceeded limit: {} > {}",
-                self.buffer.len(),
-                self.config.max_buffer_size
-            );
-            return Err(JsonParserError::InvalidData("Buffer size exceeded".into()));
-        }
+        
 
         Ok(())
     }
@@ -233,55 +224,39 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
     #[instrument(skip(self))]
     pub async fn next_ndjson<T: DeserializeOwned>(&mut self) -> Result<T, JsonParserError> {
         loop {
-            // Check if there's a newline in the buffer
-            if let Some(pos) = self.buffer.iter().position(|&b| b == b'\n') {
+            if let Some(pos) = memchr(b'\n', &self.buffer) {
                 let line = self.buffer.split_to(pos + 1);
+                let line = &line[..pos];
 
-                // Attempt zero-copy parsing if the line is valid UTF-8
-                if let Ok(line_str) = std::str::from_utf8(&line) {
-                    let trimmed = line_str.trim();
+                if line.is_empty() {
+                    continue;
+                }
 
-                    if trimmed.is_empty() {
+                match serde_json::from_slice(line) {
+                    Ok(value) => return Ok(value),
+                    Err(e) if self.config.skip_invalid => {
+                        warn!("Skipping invalid NDJSON line: {}", e);
                         continue;
                     }
-
-                    return serde_json::from_str(trimmed).map_err(|e| {
-                        JsonParserError::InvalidData(format!(
+                    Err(e) => {
+                        return Err(JsonParserError::InvalidData(format!(
                             "NDJSON error: {}. Line: {}",
-                            e, trimmed
-                        ))
-                    });
+                            e,
+                            String::from_utf8_lossy(line)
+                        )))
+                    }
                 }
             }
 
-            // If buffer is empty, attempt to read more data
             if self.buffer.is_empty() {
                 self.fill_buffer().await?;
-                continue;
+            } else if let Ok(remaining) = serde_json::from_slice::<T>(&self.buffer) {
+                let result = Ok(remaining);
+                self.buffer.clear();
+                return result;
+            } else {
+                self.fill_buffer().await?;
             }
-
-            // Try parsing the remaining buffer as a single JSON object
-            if let Ok(remaining) = std::str::from_utf8(&self.buffer) {
-                let trimmed = remaining.trim();
-
-                if !trimmed.is_empty() {
-                    let result = serde_json::from_str::<T>(trimmed).map_err(|e| {
-                        JsonParserError::InvalidData(format!(
-                            "NDJSON error: {}. Line: {}",
-                            e, trimmed
-                        ))
-                    });
-
-                    if result.is_ok() {
-                        self.buffer.clear();
-                    }
-
-                    return result;
-                }
-            }
-
-            // If parsing failed, read more data
-            self.fill_buffer().await?;
         }
     }
 }

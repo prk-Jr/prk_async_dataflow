@@ -18,13 +18,13 @@ Installation:
 To add prk_async_dataflow to your project, include the following in your Cargo.toml file:
 ```toml
   [dependencies]
-  prk_async_dataflow = "0.1.0"
+  prk_async_dataflow = "0.1.2"
 ```
 
 If you require JSON5 (relaxed mode) support, enable the feature as shown:
 ```toml
   [dependencies]
-  prk_async_dataflow = { version = "0.1.0", features = ["relaxed"] }
+  prk_async_dataflow = { version = "0.1.2", features = ["relaxed"] }
 ```
 Usage Example:
 The following example demonstrates how to create a simple TCP server that uses prk_async_dataflow to asynchronously parse incoming JSON messages (for instance, chat messages):

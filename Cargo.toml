@@ -1,6 +1,6 @@
 [package]
 name = "prk_async_dataflow"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "An asynchronous dataflow processing library for Rust to parse JSON/NDJSON streams."
 keywords = ["async", "dataflow", "json", "ndjson", "tokio"]
@@ -17,9 +17,34 @@ tokio-stream = "0.1.14"
 tracing = "0.1.40"
 bytes = "1.5.0"  # For efficient buffering
 thiserror = "2.0.11"
+memchr = "2.7.1"  # For fast newline detection
+futures = "0.3.30" # For example
+
 
 [dev-dependencies]
 tokio = { version = "1.43.0", features = ["full", "test-util", "rt-multi-thread"] }
+criterion = { version = "0.5.1", features = ["html_reports", "async"] }
+rand = "0.8.5"
 
 [features]
 relaxed = ["json5"]
+
+[[bench]]
+name = "parser_bench"
+harness = false
+
+[[bench]]
+name = "real_world_bench"
+harness = false
+
+[[bench]]
+name = "concurrency_bench"
+harness = false
+
+[[bench]]
+name = "memory_bench"
+harness = false
+
+[[bench]]
+name = "profile_bench"
+harness = false
