@@ -36,16 +36,16 @@ mod tests {
     #[test]
     fn test_extract_json_object() {
         let text = "Header { \"key\": \"value\" } Footer";
-        let (json, consumed) = extract_json(text).unwrap();
-        assert_eq!(json, "{ \"key\": \"value\" }");
+        let (json, consumed) = extract_json(text.as_bytes()).unwrap();
+        assert_eq!(json, "{ \"key\": \"value\" }".as_bytes());
         assert!(consumed > 0);
     }
 
     #[test]
     fn test_extract_json_array() {
         let text = "Some text [1, 2, 3, 4] more text";
-        let (json, consumed) = extract_json(text).unwrap();
-        assert_eq!(json, "[1, 2, 3, 4]");
+        let (json, consumed) = extract_json(text.as_bytes()).unwrap();
+        assert_eq!(json, "[1, 2, 3, 4]".as_bytes());
         assert!(consumed > 0);
     }
 
@@ -77,7 +77,7 @@ mod tests {
         let ndjson = r#"{"level": "INFO", "message": "Hello NDJSON"}"#;
         let stream = BufReader::new(Cursor::new(ndjson.as_bytes().to_vec()));
         let mut parser = AsyncJsonParser::new(stream);
-        let entry: LogEntry = parser.next_ndjson().await.unwrap();
+        let entry: LogEntry = parser.next().await.unwrap();
         assert_eq!(
             entry,
             LogEntry {
@@ -94,9 +94,9 @@ mod tests {
 {"level": "ERROR", "message": "Third"}"#;
         let stream = BufReader::new(Cursor::new(ndjson.as_bytes().to_vec()));
         let mut parser = AsyncJsonParser::new(stream);
-        let entry1: LogEntry = parser.next_ndjson().await.unwrap();
-        let entry2: LogEntry = parser.next_ndjson().await.unwrap();
-        let entry3: LogEntry = parser.next_ndjson().await.unwrap();
+        let entry1: LogEntry = parser.next().await.unwrap();
+        let entry2: LogEntry = parser.next().await.unwrap();
+        let entry3: LogEntry = parser.next().await.unwrap();
         assert_eq!(
             entry1,
             LogEntry {
@@ -129,7 +129,8 @@ mod tests {
         let result: Result<Person, _> = parser.next().await;
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("JSON parsing error"));
+        dbg!(&err_msg);
+        assert!(err_msg.contains("JSON error"));
     }
 
     // --- Tests for Robust Handling of Encoding Issues ---

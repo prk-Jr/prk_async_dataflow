@@ -4,7 +4,7 @@ use memchr::memchr;
 use prometheus::{IntCounter, IntGauge, register_int_counter, register_int_gauge};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
-use simd_json::Error as SimdJsonError;
+use simd_json::{Error as SimdJsonError, OwnedValue};
 use std::future::Future;
 use std::{pin::Pin, time::Duration};
 use tokio::{
@@ -209,7 +209,7 @@ impl<R: AsyncRead + Unpin, T: DeserializeOwned + Unpin> Stream for JsonStream<R,
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        let fut = self.parser.next::<T >();
+        let fut = self.parser.next::<T>();
         tokio::pin!(fut);
         match fut.poll(cx) {
             std::task::Poll::Ready(Ok(item)) => std::task::Poll::Ready(Some(Ok(item))),

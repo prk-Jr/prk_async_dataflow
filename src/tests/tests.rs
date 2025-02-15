@@ -6,7 +6,6 @@ mod tests {
     use std::io::Cursor;
     use tokio::sync::mpsc;
     use tokio::time::{sleep, Duration};
-    
 
     #[derive(Debug, serde::Deserialize, PartialEq)]
     struct Person {
@@ -18,17 +17,16 @@ mod tests {
     struct Data {
         id: u32,
         name: String,
-        roles: Vec<String>, 
+        roles: Vec<String>,
         enum_check: EnumCheck,
     }
-    
+
     #[derive(Debug, serde::Deserialize, PartialEq)]
     #[serde(rename_all = "snake_case")]
     enum EnumCheck {
-        Value1, 
-        Value2, 
-    } 
-
+        Value1,
+        Value2,
+    }
 
     #[derive(Debug, serde::Deserialize, PartialEq)]
     struct LLMResponse {
@@ -43,16 +41,16 @@ mod tests {
     #[test]
     fn test_extract_json_with_offset_object() {
         let text = "Header { \"key\": \"value\" } Footer";
-        let (json, consumed) = extract_json(text).unwrap();
-        assert_eq!(json, "{ \"key\": \"value\" }");
+        let (json, consumed) = extract_json(text.as_bytes()).unwrap();
+        assert_eq!(json, "{ \"key\": \"value\" }".as_bytes());
         assert!(consumed > 0);
     }
 
     #[test]
     fn test_extract_json_with_offset_array() {
         let text = "Some text [1, 2, 3, 4] more text";
-        let (json, consumed) = extract_json(text).unwrap();
-        assert_eq!(json, "[1, 2, 3, 4]");
+        let (json, consumed) = extract_json(text.as_bytes()).unwrap();
+        assert_eq!(json, "[1, 2, 3, 4]".as_bytes());
         assert!(consumed > 0);
     }
 
@@ -85,7 +83,6 @@ mod tests {
         let result: Result<Person, _> = parser.next().await;
         assert!(result.is_err());
         result.unwrap();
-        // assert_eq!(result.unwrap_err(), JsonParserError::IncompleteData);
     }
 
     #[tokio::test]
@@ -95,7 +92,6 @@ mod tests {
         let mut parser = AsyncJsonParser::new(stream);
         let result: Result<Person, _> = parser.next().await;
         assert!(result.is_err());
-        // assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidData);
     }
 
     #[tokio::test]
@@ -136,13 +132,12 @@ mod tests {
         let mut parser = AsyncJsonParser::new(stream);
         let result: Result<Person, _> = parser.next().await;
         assert!(result.is_err());
-        // assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::UnexpectedEof);
     }
 
     #[tokio::test]
     async fn test_large_json_object_spanning_chunks() {
         let expected: Vec<i32> = (0..100).collect();
-        let json_str = serde_json::to_string(&expected).unwrap();
+        let json_str = simd_json::to_string(&expected).unwrap();
         let mid = json_str.len() / 2;
         let part1 = json_str[..mid].as_bytes().to_vec();
         let part2 = json_str[mid..].as_bytes().to_vec();

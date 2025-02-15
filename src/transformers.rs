@@ -1,5 +1,5 @@
 // use serde_json::Value;
-use simd_json::{derived::MutableObject, owned::Value};
+use simd_json::{derived::MutableObject, borrowed::Value};
 use std::collections::HashMap;
 
 pub struct FeatureTransformer {
@@ -17,10 +17,10 @@ impl FeatureTransformer {
         self.mappings.insert(key, transform);
     }
 
-    pub fn transform(&self, data: Value) -> Value {
+    pub fn transform<'a>(&self, data: Value<'a>) -> Value<'a> {
         let mut result = data.clone();
         for (key, transform) in &self.mappings {
-            if let Some(value) = result.get_mut(key) {
+            if let Some(value) = result.get_mut(key.as_str()) {
                 *value = transform(value.clone());
             }
         }
