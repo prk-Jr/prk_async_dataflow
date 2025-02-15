@@ -1,10 +1,8 @@
 use bytes::{Buf, BytesMut};
 use lazy_static::lazy_static;
-use memchr::memchr;
 use prometheus::{IntCounter, IntGauge, register_int_counter, register_int_gauge};
-use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
-use simd_json::{Error as SimdJsonError, OwnedValue};
+use simd_json::Error as SimdJsonError;
 use std::future::Future;
 use std::{pin::Pin, time::Duration};
 use tokio::{
@@ -13,7 +11,6 @@ use tokio::{
 };
 use tokio_stream::Stream;
 use tracing::{debug, instrument, warn};
-use validator::Validate;
 
 use crate::extract_json;
 
