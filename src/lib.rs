@@ -57,8 +57,11 @@ pub use async_parser::*;
 mod extract_json;
 pub use extract_json::*;
 
+mod transformers;
+pub use transformers::*;
 
-
+mod connectors;
+pub use connectors::*;
 
 
 
