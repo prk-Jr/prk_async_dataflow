@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     loop {
-        match parser.next_ndjson::<ThoughtChunk>().await {
+        match parser.next::<ThoughtChunk>().await {
             Ok(thought) => {
                 println!("[Step {}] {}", thought.step, thought.thought);
                 println!("Action: {}\n", thought.action);
