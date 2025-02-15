@@ -147,9 +147,6 @@ mod tests {
         let mut parser = AsyncJsonParser::new(stream);
         let result: Result<Person, _> = parser.next().await;
         assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        dbg!(&err_msg);
-        assert!(err_msg.contains("JSON error"));
     }
 
     // --- Tests for Robust Handling of Encoding Issues ---
@@ -186,6 +183,22 @@ mod tests {
             person,
             Person {
                 name: "Alice".into(),
+                age: 30
+            }
+        );
+    }
+
+    #[cfg(feature = "relaxed")]
+    #[tokio::test]
+    async fn test_relaxed_json_parsing_error_json() {
+        let data = b"Here is your response:{name:'Prakash', age:30, extra:'remove me', yap:'   noisy message   '}";
+        let stream = BufReader::new(Cursor::new(data.to_vec()));
+        let mut parser = AsyncJsonParser::new(stream);
+        let person: Person = parser.next().await.unwrap();
+        assert_eq!(
+            person,
+            Person {
+                name: "Prakash".into(),
                 age: 30
             }
         );

@@ -1,11 +1,11 @@
 [package]
 name = "prk_async_dataflow"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "An asynchronous dataflow processing library for Rust with SIMD-accelerated JSON parsing and AI agent capabilities."
-keywords = ["async", "dataflow", "json", "ndjson", "tokio", "simd", "ai", "agent"]
+keywords = ["async", "json", "simd", "ai", "agent"]
 license = "MIT"
-categories = ["asynchronous", "parsing", "ai"]
+categories = ["asynchronous", "parsing",]
 repository = "https://github.com/prk-Jr/prk_async_dataflow"
 
 [dependencies]

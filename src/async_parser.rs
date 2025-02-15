@@ -134,45 +134,48 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                 debug!("Found JSON candidate: {:?}", &json_bytes[..json_bytes.len().min(50)]);
 
                 let mut buffer_copy = json_bytes.to_vec();
-                match simd_json::from_slice(&mut buffer_copy) {
+                match self.parse_json::<T>(&mut buffer_copy) {
                     Ok(value) => {
                         self.buffer.advance(consumed);
                         return Ok(value);
                     }
                     Err(e) => {
-                        let json_str = String::from_utf8_lossy(json_bytes);
-                        if let Some(fallback) = &self.config.fallback_parser {
-                            let value = fallback(&json_str)?;
-                            self.buffer.advance(consumed);
-                            let owned_value: simd_json::OwnedValue = value;
-                            let mut json_str = owned_value.to_string();
-                            let deserialized_value: T = unsafe {
-                                simd_json::from_str(&mut json_str)? 
-                            }; 
-                            return Ok(deserialized_value);
-                        }
-                        #[cfg(feature = "relaxed")]
-                        {
-                            if let Ok(value) = json5::from_str(&json_str) {
-                                self.buffer.advance(consumed);
-                                return Ok(value);
-                            }
-                        }
                         if self.config.skip_invalid {
                             warn!("Skipping invalid JSON: {}", e);
                             self.buffer.advance(consumed);
                             continue;
+                        } else {
+                            return Err(e);
                         }
-                        return Err(JsonParserError::InvalidData(format!(
-                            "JSON error: {}. Input: {}...",
-                            e,
-                            &json_str[..json_str.len().min(100)]
-                        )));
                     }
                 }
             }
             self.fill_buffer().await?;
         }
+    }
+
+    #[cfg(feature = "relaxed")]
+    fn parse_json<T: DeserializeOwned>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) -> Result<T, JsonParserError> {
+        // First try standard JSON parsing
+        match simd_json::from_slice(buffer) {
+            Ok(value) => Ok(value),
+            Err(_) => {
+                // Fallback to JSON5 parsing
+                let json_str = String::from_utf8_lossy(buffer);
+                json5::from_str(&json_str).map_err(JsonParserError::Json5)
+            }
+        }
+    }
+
+    #[cfg(not(feature = "relaxed"))]
+    fn parse_json<T: DeserializeOwned>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) -> Result<T, JsonParserError> {
+        simd_json::from_slice(buffer).map_err(JsonParserError::Json)
     }
 
     #[instrument(skip(self))]
