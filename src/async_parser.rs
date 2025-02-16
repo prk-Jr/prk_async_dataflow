@@ -2,7 +2,7 @@ use bytes::{Buf, BytesMut};
 use lazy_static::lazy_static;
 use prometheus::{IntCounter, IntGauge, register_int_counter, register_int_gauge};
 use serde::de::DeserializeOwned;
-use simd_json::Error as SimdJsonError;
+use simd_json::{Error as SimdJsonError, OwnedValue};
 use std::future::Future;
 use std::{pin::Pin, time::Duration};
 use tokio::{
@@ -14,7 +14,6 @@ use tracing::{debug, instrument, warn};
 
 use crate::extract_json;
 
-// Initialize Prometheus metrics
 lazy_static! {
     static ref PARSED_JSON_COUNT: IntCounter = register_int_counter!(
         "parsed_json_count",
@@ -50,7 +49,7 @@ pub struct ParserConfig {
     pub timeout: Option<Duration>,
     pub max_buffer_size: usize,
     pub fallback_parser: Option<
-        Box<dyn Fn(&str) -> Result<simd_json::OwnedValue, JsonParserError> + Send + Sync>,
+        Box<dyn Fn(&str) -> Result<OwnedValue, JsonParserError> + Send + Sync>,
     >,
     pub skip_invalid: bool,
     pub batch_size: usize,
@@ -126,15 +125,16 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
     }
 
     #[instrument(skip(self))]
-    pub async fn next<T: DeserializeOwned>(
-        &mut self,
-    ) -> Result<T, JsonParserError> {
+    pub async fn next<T: DeserializeOwned>(&mut self) -> Result<T, JsonParserError> {
         loop {
             if let Some((json_bytes, consumed)) = extract_json(&self.buffer) {
-                debug!("Found JSON candidate: {:?}", &json_bytes[..json_bytes.len().min(50)]);
+                debug!(
+                    "Found JSON candidate: {:?}",
+                    String::from_utf8_lossy(&json_bytes[..json_bytes.len().min(50)])
+                );
 
-                let mut buffer_copy = json_bytes.to_vec();
-                match self.parse_json::<T>(&mut buffer_copy) {
+                let result = self.parse_json::<T>(json_bytes).await;
+                match result {
                     Ok(value) => {
                         self.buffer.advance(consumed);
                         return Ok(value);
@@ -154,28 +154,31 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
         }
     }
 
-    #[cfg(feature = "relaxed")]
-    fn parse_json<T: DeserializeOwned>(
+    async fn parse_json<T: DeserializeOwned>(
         &self,
-        buffer: &mut Vec<u8>,
+        json_bytes: &[u8],
     ) -> Result<T, JsonParserError> {
+        let mut buffer_copy = json_bytes.to_vec();
+        
         // First try standard JSON parsing
-        match simd_json::from_slice(buffer) {
+        match simd_json::from_slice(&mut buffer_copy) {
             Ok(value) => Ok(value),
             Err(_) => {
-                // Fallback to JSON5 parsing
-                let json_str = String::from_utf8_lossy(buffer);
-                json5::from_str(&json_str).map_err(JsonParserError::Json5)
+                // Fallback to JSON5 parsing if enabled
+                #[cfg(feature = "relaxed")]
+                {
+                    let json_str = String::from_utf8_lossy(json_bytes);
+                    json5::from_str(&json_str).map_err(JsonParserError::Json5)
+                }
+                #[cfg(not(feature = "relaxed"))]
+                {
+                    Err(JsonParserError::InvalidData(format!(
+                        "Failed to parse JSON: {}",
+                        String::from_utf8_lossy(json_bytes)
+                    )))
+                }
             }
         }
-    }
-
-    #[cfg(not(feature = "relaxed"))]
-    fn parse_json<T: DeserializeOwned>(
-        &self,
-        buffer: &mut Vec<u8>,
-    ) -> Result<T, JsonParserError> {
-        simd_json::from_slice(buffer).map_err(JsonParserError::Json)
     }
 
     #[instrument(skip(self))]
@@ -185,9 +188,7 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
         let mut batch = Vec::with_capacity(self.config.batch_size);
         while batch.len() < self.config.batch_size {
             match self.next::<T>().await {
-                Ok(item) => {
-                    batch.push(item);
-                }
+                Ok(item) => batch.push(item),
                 Err(JsonParserError::IncompleteData) => break,
                 Err(e) => return Err(e),
             }

@@ -13,6 +13,7 @@ async fn batch_parse(data: &[u8]) {
     let reader = Cursor::new(data);
     let config = ParserConfig {
         batch_size: 2,
+        skip_invalid: true,
         ..Default::default()
     };
     let mut parser = AsyncJsonParser::with_config(reader, config);

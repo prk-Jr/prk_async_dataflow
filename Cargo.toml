@@ -1,6 +1,6 @@
 [package]
 name = "prk_async_dataflow"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "An asynchronous dataflow processing library for Rust with SIMD-accelerated JSON parsing and AI agent capabilities."
 keywords = ["async", "json", "simd", "ai", "agent"]
@@ -19,7 +19,7 @@ bytes = "1.5.0"
 thiserror = "2.0.11"
 memchr = "2.7.1"
 futures = "0.3.30"
-reqwest = { version = "0.11.22", features = ["json"] }
+reqwest = { version = "0.11.22", features = ["json", "stream"] }
 tokio-tungstenite = "0.20.1"
 prometheus = "0.13.3"
 schemars = "0.8.15"

@@ -4,20 +4,14 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
 
-/// A custom asynchronous reader that receives data in chunks from a Tokio mpsc channel.
-/// This simulates a streaming source (for example, network data or an LLM response delivered in parts).
 pub struct ChannelReader {
     rx: mpsc::Receiver<Vec<u8>>,
     buffer: Vec<u8>,
 }
 
 impl ChannelReader {
-    /// Creates a new `ChannelReader` from the given mpsc receiver.
     pub fn new(rx: mpsc::Receiver<Vec<u8>>) -> Self {
-        Self {
-            rx,
-            buffer: Vec::new(),
-        }
+        Self { rx, buffer: Vec::new() }
     }
 }
 
@@ -29,17 +23,15 @@ impl AsyncRead for ChannelReader {
     ) -> Poll<Result<(), IoError>> {
         if self.buffer.is_empty() {
             match Pin::new(&mut self.rx).poll_recv(cx) {
-                Poll::Ready(Some(chunk)) => {
-                    self.buffer = chunk;
-                }
+                Poll::Ready(Some(chunk)) => self.buffer = chunk,
                 Poll::Ready(None) => return Poll::Ready(Ok(())),
                 Poll::Pending => return Poll::Pending,
             }
         }
-        let remaining = buf.remaining();
-        let n = std::cmp::min(remaining, self.buffer.len());
-        buf.put_slice(&self.buffer[..n]);
-        self.buffer.drain(0..n);
+        
+        let to_copy = std::cmp::min(self.buffer.len(), buf.remaining());
+        buf.put_slice(&self.buffer[..to_copy]);
+        self.buffer.drain(..to_copy);
         Poll::Ready(Ok(()))
     }
 }

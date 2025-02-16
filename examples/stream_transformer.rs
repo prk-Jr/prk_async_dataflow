@@ -13,7 +13,7 @@ struct Post {
 
 #[tokio::main]
 async fn main() {
-    let connector = HttpConnector::new("https://jsonplaceholder.typicode.com/posts".to_string());
+    let connector = HttpConnector::new("https://jsonplaceholder.typicode.com/posts").unwrap();
     let data = connector.fetch().await.unwrap();
     let reader = Cursor::new(data);
     let parser = AsyncJsonParser::new(reader);
