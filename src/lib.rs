@@ -11,7 +11,7 @@
 //! use tokio::sync::mpsc;
 //! use tokio::time::{sleep, Duration};
 //!
-//! #[derive(Debug, serde::Deserialize)]
+//! #[derive(Debug, serde::Deserialize, serde::Serialize)]
 //! struct Person {
 //!     name: String,
 //!     age: u32,

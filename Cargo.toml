@@ -17,7 +17,6 @@ tokio-stream = "0.1.14"
 tracing = "0.1.40"
 bytes = "1.5.0"
 thiserror = "2.0.11"
-memchr = "2.7.1"
 futures = "0.3.30"
 reqwest = { version = "0.11.22", features = ["json", "stream"] }
 tokio-tungstenite = "0.20.1"
@@ -35,7 +34,7 @@ relaxed = ["json5"]
 
 [dev-dependencies]
 tokio = { version = "1.43.0", features = ["full", "test-util", "rt-multi-thread"] }
-criterion = { version = "0.5.1", features = ["html_reports", "async"] }
+criterion = { version = "0.5.1", features = ["html_reports", "async", "async_futures"] }
 rand = "0.8.5"
 
 [[bench]]

@@ -1,9 +1,9 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use prk_async_dataflow::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct SampleData {
     id: u64,
     value: String,

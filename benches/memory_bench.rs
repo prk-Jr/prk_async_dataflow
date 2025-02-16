@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion, Throughput, BenchmarkId};
+use criterion::async_executor::FuturesExecutor;
 use prk_async_dataflow::*;
-use serde::Deserialize;
-use tokio::runtime::Runtime;
+use serde::{Deserialize, Serialize};
 use std::alloc::System;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -37,7 +37,7 @@ fn allocated() -> usize {
     ALLOCATED.load(Ordering::SeqCst)
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct SampleData {
     id: u64,
     value: String,
@@ -68,8 +68,6 @@ async fn parse_data(data: &[u8], count: usize) {
 }
 
 fn memory_benchmark(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
-    
     let mut group = c.benchmark_group("memory_usage");
     group.sample_size(10);
     
@@ -81,11 +79,9 @@ fn memory_benchmark(c: &mut Criterion) {
             BenchmarkId::from_parameter(count), 
             &data,
             |b, data| {
-                b.iter(|| {
+                b.to_async(FuturesExecutor).iter(|| async {
                     let start_mem = allocated();
-                    rt.block_on(async {
-                        parse_data(data, *count).await
-                    });
+                    parse_data(data, *count).await;
                     let end_mem = allocated();
                     println!("Memory delta for {} items: {} bytes", count, end_mem - start_mem);
                 });

@@ -1,8 +1,8 @@
 use prk_async_dataflow::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ThoughtChunk {
     step: u32,
     thought: String,

@@ -4,9 +4,9 @@ use tokio::{
 };
 use tokio_stream::StreamExt;
 use prk_async_dataflow::AsyncJsonParser;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize,Serialize ,Debug)]
 struct ChatMessage {
     username: String,
     message: String,

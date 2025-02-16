@@ -7,13 +7,13 @@ mod tests {
     use tokio::sync::mpsc;
     use tokio::time::{sleep, Duration};
 
-    #[derive(Debug, serde::Deserialize, PartialEq)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
     struct Person {
         name: String,
         age: u32,
     }
 
-    #[derive(Debug, serde::Deserialize, PartialEq)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
     struct Data {
         id: u32,
         name: String,
@@ -21,14 +21,14 @@ mod tests {
         enum_check: EnumCheck,
     }
 
-    #[derive(Debug, serde::Deserialize, PartialEq)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
     #[serde(rename_all = "snake_case")]
     enum EnumCheck {
         Value1,
         Value2,
     }
 
-    #[derive(Debug, serde::Deserialize, PartialEq)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
     struct LLMResponse {
         status: String,
         message: String,

@@ -1,9 +1,9 @@
 use std::io::Cursor;
 
 use prk_async_dataflow::{AsyncJsonParser, ParserConfig};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct MyData {
     id: u32,
     name: String,
