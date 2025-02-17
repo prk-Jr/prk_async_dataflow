@@ -1,9 +1,9 @@
 use std::io::Cursor;
 
 use prk_async_dataflow::{AsyncJsonParser, ParserConfig};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct MyData {
     id: u32,
     name: String,
@@ -13,9 +13,11 @@ async fn batch_parse(data: &[u8]) {
     let reader = Cursor::new(data);
     let config = ParserConfig {
         batch_size: 2,
+        skip_invalid: true,
         ..Default::default()
     };
-    let mut parser = AsyncJsonParser::with_config(reader, config);
+    let mut parser = AsyncJsonParser::with_config(reader.clone(), config);
+    // let mut parser = AsyncJsonParser::new(reader);
 
     let batch = parser.next_batch::<MyData>().await.unwrap();
     println!("Parsed batch: {:?}", batch);

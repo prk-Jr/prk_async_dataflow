@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod tests {
     use crate::*;
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
     use tokio::{io::BufReader, sync::mpsc, time::sleep};
     use tokio::time::Duration;
 
-    #[derive(Debug, Deserialize, PartialEq)]
+    #[derive(Debug, Deserialize, PartialEq, Serialize)]
     struct ChatMessage {
         user: String,
         text: String,

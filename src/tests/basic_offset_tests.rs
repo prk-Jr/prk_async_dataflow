@@ -1,31 +1,30 @@
 #[cfg(test)]
 mod tests {
     use crate::{extract_json, AsyncJsonParser, ChannelReader};
-    use simd_json::OwnedValue;
     use std::io::Cursor;
     use tokio::io::BufReader;
     use tokio::sync::mpsc;
     use tokio::time::{sleep, Duration};
 
-    #[derive(Debug, serde::Deserialize, PartialEq)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
     struct Person {
         name: String,
         age: u32,
     }
 
-    #[derive(Debug, serde::Deserialize, PartialEq)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
     struct LogEntry {
         level: String,
         message: String,
     }
 
-    #[derive(Debug, serde::Deserialize, PartialEq)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
     struct Data {
         id: u32,
         name: String,
     }
 
-    #[derive(Debug, serde::Deserialize, PartialEq)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
     struct LLMResponse {
         status: String,
         message: String,

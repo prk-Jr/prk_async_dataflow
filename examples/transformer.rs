@@ -1,7 +1,7 @@
 use std::io::Cursor;
 use prk_async_dataflow::{AsyncJsonParser, DataConnector, FeatureTransformer, HttpConnector};
 use serde::{Deserialize, Serialize};
-use simd_json::{base::ValueAsScalar, borrowed::Value};
+use simd_json::base::ValueAsScalar;
 use tokio_stream::StreamExt;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -10,38 +10,34 @@ struct Post {
     title: String,
     body: String,
 }
-
+// transformer.rs
 #[tokio::main]
 async fn main() {
-    let connector = HttpConnector::new("https://jsonplaceholder.typicode.com/posts".to_string());
+    let connector = HttpConnector::new("https://jsonplaceholder.typicode.com/posts").unwrap();
     let data = connector.fetch().await.unwrap();
     let reader = Cursor::new(data);
-    let parser = AsyncJsonParser::new(reader);
+    
 
     let mut transformer = FeatureTransformer::new();
-    transformer.add_mapping("title".to_string(), Box::new(|v| {
+    transformer.add_mapping("title".to_string(), Box::new(|mut v| {
         // Transform the title to uppercase
-        if let Some(title) = v.as_str() {
-            Value::String(title.to_uppercase().into())
-        } else {
-            v // Return the original value if it's not a string
-        }
+        v = v.as_str().unwrap().to_uppercase().into();
+        v
     }));
 
-    // Parse the array of posts
-    let mut stream = parser.into_stream::<Vec<Post>>();
+    let parser = AsyncJsonParser::new(reader, );
+
+    let mut stream = parser.into_stream::<simd_json::OwnedValue>();
     while let Some(result) = stream.next().await {
         match result {
-            Ok(posts) => {
-                for mut post in posts {
-                    // Apply the transformation to the title
-                    post.title = post.title.to_uppercase();
-                    println!("Transformed Post: {:#?}", post);
+            Ok(mut value) => {
+                value = transformer.transform(value.into()).into();
+                match simd_json::serde::from_owned_value::<Post>(value) {
+                    Ok(post) => println!("Transformed Post: {:#?}", post),
+                    Err(e) => eprintln!("Deserialization error: {}", e),
                 }
             }
-            Err(e) => {
-                eprintln!("Error parsing JSON: {}", e);
-            }
+            Err(e) => eprintln!("Error parsing JSON: {}", e),
         }
     }
 }

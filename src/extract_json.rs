@@ -1,3 +1,4 @@
+
 pub fn extract_json(bytes: &[u8]) -> Option<(&[u8], usize)> {
     let bytes = skip_whitespace(bytes);
     if bytes.is_empty() {
@@ -90,12 +91,11 @@ fn extract_single_json(bytes: &[u8]) -> Option<(&[u8], usize)> {
     end.map(|e| (&bytes_slice[..e], start + e))
 }
 
-// Add JSON5 parsing support
 #[cfg(feature = "relaxed")]
 pub fn extract_json5_value(bytes: &[u8]) -> Option<simd_json::OwnedValue> {
     if let Some((json, _)) = extract_json(bytes) {
-        let  json_vec = json.to_vec();
-        json5::from_str(std::str::from_utf8(&json_vec).ok()?).ok()
+        let json_str = std::str::from_utf8(json).ok()?;
+        json5::from_str(json_str).ok()
     } else {
         None
     }

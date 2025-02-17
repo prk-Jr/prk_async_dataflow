@@ -1,6 +1,6 @@
 [package]
 name = "prk_async_dataflow"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 description = "An asynchronous dataflow processing library for Rust with SIMD-accelerated JSON parsing and AI agent capabilities."
 keywords = ["async", "json", "simd", "ai", "agent"]
@@ -17,15 +17,14 @@ tokio-stream = "0.1.14"
 tracing = "0.1.40"
 bytes = "1.5.0"
 thiserror = "2.0.11"
-memchr = "2.7.1"
 futures = "0.3.30"
-reqwest = { version = "0.11.22", features = ["json"] }
-tokio-tungstenite = "0.20.1"
+reqwest = { version = "0.11.22", features = ["json", "stream"] }
+tokio-tungstenite = { version = "0.20.1", features = ["rustls-tls-webpki-roots"] }
 prometheus = "0.13.3"
 schemars = "0.8.15"
 validator = "0.16.1"
 async-trait = "0.1.77"
-tokio-util = { version = "0.7.10", features = ["codec"] }
+tokio-util = { version = "0.7.10", features = ["codec", "compat"] }
 dashmap = "5.5.3"
 lazy_static = "1.4.0"
 
@@ -35,7 +34,7 @@ relaxed = ["json5"]
 
 [dev-dependencies]
 tokio = { version = "1.43.0", features = ["full", "test-util", "rt-multi-thread"] }
-criterion = { version = "0.5.1", features = ["html_reports", "async"] }
+criterion = { version = "0.5.1", features = ["html_reports", "async", "async_futures"] }
 rand = "0.8.5"
 
 [[bench]]

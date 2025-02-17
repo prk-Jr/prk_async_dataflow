@@ -92,9 +92,9 @@ async fn run_client() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Set up the FeatureTransformer to convert "title" to uppercase.
     let mut transformer = FeatureTransformer::new();
-    transformer.add_mapping("title".to_string(), Box::new(|v: Value| {
+    transformer.add_mapping("title".to_string(), Box::new(|v| {
         if let Some(title) = v.as_str() {
-            Value::String(title.to_uppercase().into())
+            Value::String(title.to_uppercase().into()).into()
         } else {
             v
         }
@@ -112,7 +112,7 @@ async fn run_client() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             let mut bytes = txt.into_bytes();
                             let parsed: Value = simd_json::to_borrowed_value(&mut bytes).unwrap();
                             // Apply transformation.
-                            let transformed = transformer.transform(parsed);
+                            let transformed = transformer.transform(parsed.into());
                             println!("Client transformed: {:#?}", transformed);
                         },
                         Message::Close(_) => {

@@ -7,13 +7,13 @@ mod tests {
     use tokio::sync::mpsc;
     use tokio::time::{sleep, Duration};
 
-    #[derive(Debug, serde::Deserialize, PartialEq)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
     struct Person {
         name: String,
         age: u32,
     }
 
-    #[derive(Debug, serde::Deserialize, PartialEq)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
     struct Data {
         id: u32,
         name: String,
@@ -21,14 +21,14 @@ mod tests {
         enum_check: EnumCheck,
     }
 
-    #[derive(Debug, serde::Deserialize, PartialEq)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
     #[serde(rename_all = "snake_case")]
     enum EnumCheck {
         Value1,
         Value2,
     }
 
-    #[derive(Debug, serde::Deserialize, PartialEq)]
+    #[derive(Debug, serde::Deserialize, serde::Serialize, PartialEq)]
     struct LLMResponse {
         status: String,
         message: String,
@@ -143,14 +143,17 @@ mod tests {
         let part2 = json_str[mid..].as_bytes().to_vec();
         let (tx, rx) = mpsc::channel::<Vec<u8>>(2);
         let reader = ChannelReader::new(rx);
-        let mut parser = AsyncJsonParser::new(reader);
+        let mut parser = AsyncJsonParser::with_config(reader, crate::ParserConfig {
+            batch_size: 30,
+            ..Default::default()
+        });
         tokio::spawn(async move {
             tx.send(part1).await.unwrap();
             sleep(Duration::from_millis(50)).await;
             tx.send(part2).await.unwrap();
         });
-        let result: Vec<i32> = parser.next().await.unwrap();
-        assert_eq!(result, expected);
+        let result = parser.next_batch::<i32>().await.unwrap();
+        assert_eq!(result, expected.iter().take(30).cloned().collect::<Vec<_>>());
     }
 
     #[tokio::test]

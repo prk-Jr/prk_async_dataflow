@@ -11,7 +11,7 @@
 //! use tokio::sync::mpsc;
 //! use tokio::time::{sleep, Duration};
 //!
-//! #[derive(Debug, serde::Deserialize)]
+//! #[derive(Debug, serde::Deserialize, serde::Serialize)]
 //! struct Person {
 //!     name: String,
 //!     age: u32,
@@ -66,3 +66,5 @@ pub use connectors::*;
 mod metrics;
 pub use metrics::*;
 
+mod stream_adapter;
+pub use stream_adapter::*;

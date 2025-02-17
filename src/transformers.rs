@@ -1,10 +1,8 @@
-// use serde_json::Value;
-use simd_json::derived::MutableObject;
+use simd_json::{derived::MutableObject,  OwnedValue};
 use std::collections::HashMap;
-use simd_json::borrowed::Value;
 
 pub struct FeatureTransformer {
-    pub mappings: HashMap<String, Box<dyn Fn(Value) -> Value + Send + Sync>>,
+    mappings: HashMap<String, Box<dyn Fn(OwnedValue) -> OwnedValue + Send + Sync>>,
 }
 
 impl FeatureTransformer {
@@ -14,17 +12,21 @@ impl FeatureTransformer {
         }
     }
 
-    pub fn add_mapping(&mut self, key: String, transform: Box<dyn Fn(Value) -> Value + Send + Sync>) {
+    pub fn add_mapping(
+        &mut self,
+        key: String,
+        transform: Box<dyn Fn(OwnedValue) -> OwnedValue + Send + Sync>,
+    ) {
         self.mappings.insert(key, transform);
     }
 
-    pub fn transform<'a>(&self, data: Value<'a>) -> Value<'a> {
-        let mut result = data.clone();
+    pub fn transform<'a>(&self, mut data: OwnedValue) -> OwnedValue {
         for (key, transform) in &self.mappings {
-            if let Some(value) = result.get_mut(key.as_str()) {
-                *value = transform(value.clone());
+            if let Some(value) = data.get_mut(key.as_str()) {
+                let new_value = transform(value.clone());
+                *value = new_value;
             }
         }
-        result
+        data
     }
 }
