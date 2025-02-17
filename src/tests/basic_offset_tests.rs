@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use crate::{extract_json, AsyncJsonParser, ChannelReader};
-    use simd_json::OwnedValue;
     use std::io::Cursor;
     use tokio::io::BufReader;
     use tokio::sync::mpsc;

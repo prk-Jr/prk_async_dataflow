@@ -92,7 +92,7 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
         }
     }
 
-    pub fn into_stream<T: DeserializeOwned + Unpin + 'static + serde::Serialize>(
+    pub fn into_stream<T: DeserializeOwned + Unpin + 'static + Serialize>(
         self,
     ) -> impl Stream<Item = Result<T, JsonParserError>> {
         JsonStream {
@@ -229,7 +229,27 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                 Err(e) => return Err(e),
             }
         }
-        PARSED_JSON_COUNT.inc_by(batch.len() as u64);
+        if !batch.is_empty() {
+            PARSED_JSON_COUNT.inc_by(batch.len() as u64);
+        }
+        Ok(batch)
+    }
+
+    #[instrument(skip(self))]
+    pub async fn next_batch_array<T: DeserializeOwned + Serialize>(
+        &mut self,
+    ) -> Result<Vec<T>, JsonParserError> {
+        let mut batch = Vec::with_capacity(self.config.batch_size);
+        while batch.len() < self.config.batch_size {
+            match self.next::<Vec<T>>().await {
+                Ok(items) => batch.extend(items),
+                Err(JsonParserError::IncompleteData) => break,
+                Err(e) => return Err(e),
+            }
+        }
+        if !batch.is_empty() {
+            PARSED_JSON_COUNT.inc_by(batch.len() as u64);
+        }
         Ok(batch)
     }
 }
