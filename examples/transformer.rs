@@ -16,7 +16,7 @@ async fn main() {
     let connector = HttpConnector::new("https://jsonplaceholder.typicode.com/posts").unwrap();
     let data = connector.fetch().await.unwrap();
     let reader = Cursor::new(data);
-    let parser = AsyncJsonParser::new(reader);
+    
 
     let mut transformer = FeatureTransformer::new();
     transformer.add_mapping("title".to_string(), Box::new(|mut v| {
@@ -24,6 +24,8 @@ async fn main() {
         v = v.as_str().unwrap().to_uppercase().into();
         v
     }));
+
+    let parser = AsyncJsonParser::new(reader, );
 
     let mut stream = parser.into_stream::<simd_json::OwnedValue>();
     while let Some(result) = stream.next().await {

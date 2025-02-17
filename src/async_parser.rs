@@ -4,7 +4,7 @@ use prometheus::{IntCounter, IntGauge, register_int_counter, register_int_gauge}
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use simd_json::{Error as SimdJsonError, OwnedValue};
-use std::{pin::Pin, time::Duration};
+use std::{pin::Pin, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncRead, AsyncReadExt},
     time::timeout,
@@ -13,7 +13,7 @@ use tokio_stream::Stream;
 use tracing::{debug, instrument, warn};
 use futures::Future;
 
-use crate::extract_json;
+use crate::{extract_json, FeatureTransformer};
 
 lazy_static! {
     static ref PARSED_JSON_COUNT: IntCounter = register_int_counter!(
@@ -55,6 +55,8 @@ pub struct ParserConfig {
     pub skip_invalid: bool,
     pub batch_size: usize,
     pub validation_schema: Option<schemars::schema::RootSchema>,
+    pub transformer: Option<Arc<FeatureTransformer>>,
+
 }
 
 impl Default for ParserConfig {
@@ -67,6 +69,7 @@ impl Default for ParserConfig {
             skip_invalid: false,
             batch_size: 10,
             validation_schema: None,
+            transformer: None,
         }
     }
 }
@@ -179,25 +182,73 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
         &mut self,
         json_bytes: &[u8],
     ) -> Result<ValueOrArray<T>, JsonParserError> {
+        // Create a mutable copy of the input bytes
         let mut buffer_copy = json_bytes.to_vec();
         
-        // Parse as OwnedValue first
+        // First attempt to parse using SIMD-accelerated JSON
         match simd_json::from_slice(&mut buffer_copy) {
             Ok(simd_json::OwnedValue::Array(array)) => {
+                // If we have a transformer, apply it to each element
+                if let Some(transformer) = &self.config.transformer {
+                    let transformed_array = array.into_iter()
+                        .map(|value| transformer.transform(value.into()))
+                        .collect();
+                    return Ok(ValueOrArray::Array(transformed_array));
+                }
                 Ok(ValueOrArray::Array(array))
             }
-            Ok(value) => {
+            Ok(mut value) => {
+                // Apply transformer if configured
+                if let Some(transformer) = &self.config.transformer {
+                    value = transformer.transform(value);
+                }
+                
                 // Try to deserialize as T
-                let t = simd_json::serde::from_owned_value(value)?;
-                Ok(ValueOrArray::Value(t))
+                match simd_json::serde::from_owned_value(value) {
+                    Ok(t) => Ok(ValueOrArray::Value(t)),
+                    Err(e) => {
+                        // Fallback to JSON5 if enabled
+                        #[cfg(feature = "relaxed")]
+                        {
+                            let json_str = String::from_utf8_lossy(json_bytes);
+                            match json5::from_str(&json_str) {
+                                Ok(t) => Ok(ValueOrArray::Value(t)),
+                                Err(e) => Err(JsonParserError::InvalidData(e.to_string())),
+                            }
+                        }
+                        #[cfg(not(feature = "relaxed"))]
+                        {
+                            Err(JsonParserError::InvalidData(format!(
+                                "Failed to parse JSON: {}",
+                                String::from_utf8_lossy(json_bytes)
+                            )))
+                        }
+                    }
+                }
             }
             Err(_) => {
                 // Fallback to JSON5 if enabled
                 #[cfg(feature = "relaxed")]
                 {
                     let json_str = String::from_utf8_lossy(json_bytes);
-                    let value: T = json5::from_str(&json_str)?;
-                    Ok(ValueOrArray::Value(value))
+                    match json5::from_str(&json_str) {
+                        Ok(value) => {
+                            // Apply transformer if configured
+                            if let Some(transformer) = &self.config.transformer {
+                                let transformed = transformer.transform(value);
+                                match simd_json::serde::from_owned_value(transformed) {
+                                    Ok(t) => Ok(ValueOrArray::Value(t)),
+                                    Err(e) => Err(JsonParserError::Json(e)),
+                                }
+                            } else {
+                                match simd_json::serde::from_owned_value(value) {
+                                    Ok(t) => Ok(ValueOrArray::Value(t)),
+                                    Err(e) => Err(JsonParserError::Json(e)),
+                                }
+                            }
+                        }
+                        Err(e) => Err(JsonParserError::Json5(e)),
+                    }
                 }
                 #[cfg(not(feature = "relaxed"))]
                 {

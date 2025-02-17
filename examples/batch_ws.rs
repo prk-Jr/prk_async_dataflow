@@ -1,12 +1,21 @@
-use prk_async_dataflow::{AsyncJsonParser, DataConnector, ParserConfig, StreamToAsyncRead, WebSocketConnector};
+use prk_async_dataflow::{AsyncJsonParser, DataConnector, JsonParserError, ParserConfig, StreamToAsyncRead, WebSocketConnector};
+use serde::{Deserialize, Serialize};
 use tokio_stream::StreamExt;
-use std::io;
+use std::{io, time::Duration};
+
+#[derive(Deserialize, Serialize, Debug)]
+struct Message {
+    id: i32,
+    name: String,
+}
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create the WebSocket connector
-    let connector = WebSocketConnector::new("ws://ws.postman-echo.com/raw").unwrap();
-    let stream = connector.stream().await.unwrap();
+    let connector = WebSocketConnector::new("wss://ws.postman-echo.com/raw")?;
+    
+    // Connect and get the stream
+    let stream = connector.stream().await?;
 
     // Adapt the stream into an AsyncRead
     let stream = stream.map(|result| {
@@ -14,27 +23,45 @@ async fn main() {
     });
     let async_read = StreamToAsyncRead::new(stream);
 
-    // Create the parser
+    // Create the parser with appropriate configuration
     let mut parser = AsyncJsonParser::with_config(
         async_read,
         ParserConfig {
-            batch_size: 10,
-            timeout: Some(std::time::Duration::from_secs(5)),
+            batch_size: 1,
+            timeout: Some(Duration::from_secs(30)), // Increased timeout
+            max_buffer_size: 1024 * 1024, // 1MB buffer
+            skip_invalid: true, // Skip invalid messages
             ..Default::default()
         },
     );
 
-    // Process batches
+    println!("Connected to WebSocket. Waiting for messages...");
+
+    // Process messages
     loop {
-        match parser.next_batch::<simd_json::owned::Value>().await {
-            Ok(batch) => {
-                println!("Received batch of {} messages", batch.len());
-                // Process batch
+        match parser.next::<Message>().await {
+            Ok(msg) => {
+                println!("Received message: {:?}", msg);
             }
             Err(e) => {
-                eprintln!("Error: {}", e);
-                break;
+                match e {
+                    JsonParserError::Timeout => {
+                        println!("No data received within timeout period. Reconnecting...");
+                        // Implement reconnection logic here if needed
+                        break;
+                    }
+                    JsonParserError::IncompleteData => {
+                        println!("Connection closed by server");
+                        break;
+                    }
+                    _ => {
+                        eprintln!("Error: {}", e);
+                        break;
+                    }
+                }
             }
         }
     }
+
+    Ok(())
 }

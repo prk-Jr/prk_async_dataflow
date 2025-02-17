@@ -21,14 +21,14 @@ fn test_title_uppercase_transformation() {
     let mut transformer = FeatureTransformer::new();
     transformer.add_mapping("title".to_string(), Box::new(|v| {
         if let Some(s) = v.as_str() {
-            Value::String(s.to_uppercase().into())
+            Value::String(s.to_uppercase().into()).into()
         } else {
             v
         }
     }));
     
     // Apply the transformation.
-    let transformed = transformer.transform(value.clone());
+    let transformed = transformer.transform(value.clone().into());
     
     // Verify that the title field is now uppercase.
     assert_eq!(
