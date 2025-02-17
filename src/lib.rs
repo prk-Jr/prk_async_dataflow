@@ -66,3 +66,5 @@ pub use connectors::*;
 mod metrics;
 pub use metrics::*;
 
+mod stream_adapter;
+pub use stream_adapter::*;

@@ -16,7 +16,8 @@ async fn batch_parse(data: &[u8]) {
         skip_invalid: true,
         ..Default::default()
     };
-    let mut parser = AsyncJsonParser::with_config(reader, config);
+    let mut parser = AsyncJsonParser::with_config(reader.clone(), config);
+    // let mut parser = AsyncJsonParser::new(reader);
 
     let batch = parser.next_batch::<MyData>().await.unwrap();
     println!("Parsed batch: {:?}", batch);

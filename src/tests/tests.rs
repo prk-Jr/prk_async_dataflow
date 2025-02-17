@@ -143,14 +143,17 @@ mod tests {
         let part2 = json_str[mid..].as_bytes().to_vec();
         let (tx, rx) = mpsc::channel::<Vec<u8>>(2);
         let reader = ChannelReader::new(rx);
-        let mut parser = AsyncJsonParser::new(reader);
+        let mut parser = AsyncJsonParser::with_config(reader, crate::ParserConfig {
+            batch_size: 30,
+            ..Default::default()
+        });
         tokio::spawn(async move {
             tx.send(part1).await.unwrap();
             sleep(Duration::from_millis(50)).await;
             tx.send(part2).await.unwrap();
         });
-        let result: Vec<i32> = parser.next().await.unwrap();
-        assert_eq!(result, expected);
+        let result = parser.next_batch::<i32>().await.unwrap();
+        assert_eq!(result, expected.iter().take(30).cloned().collect::<Vec<_>>());
     }
 
     #[tokio::test]

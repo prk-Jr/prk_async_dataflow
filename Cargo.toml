@@ -24,7 +24,7 @@ prometheus = "0.13.3"
 schemars = "0.8.15"
 validator = "0.16.1"
 async-trait = "0.1.77"
-tokio-util = { version = "0.7.10", features = ["codec"] }
+tokio-util = { version = "0.7.10", features = ["codec", "compat"] }
 dashmap = "5.5.3"
 lazy_static = "1.4.0"
 

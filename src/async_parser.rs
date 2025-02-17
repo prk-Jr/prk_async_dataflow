@@ -156,17 +156,10 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                 
                 match result {
                     Ok(ValueOrArray::Value(value)) => return Ok(value),
-                    Ok(ValueOrArray::Array(mut array)) => {
-                        array.reverse();  // Store in reverse order for pop() to maintain order
-                        self.pending = array
-                            .into_iter()
-                            .map(|v| {
-                                let json_str = simd_json::serde::to_string(&v).unwrap();
-                                let mut json_bytes = json_str.into_bytes();
-                                simd_json::to_owned_value(&mut json_bytes).unwrap()
-                            })
-                            .collect();
-                        continue;  // Will process pending items in next loop iteration
+                    Ok(ValueOrArray::Array(array)) => {
+                        // Reverse to maintain order when popping
+                        self.pending = array.into_iter().rev().collect();
+                        continue;
                     }
                     Err(e) => {
                         if self.config.skip_invalid {
@@ -187,35 +180,37 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
         json_bytes: &[u8],
     ) -> Result<ValueOrArray<T>, JsonParserError> {
         let mut buffer_copy = json_bytes.to_vec();
-
-        // Try parsing as a single value
+        
+        // Parse as OwnedValue first
         match simd_json::from_slice(&mut buffer_copy) {
-            Ok(value) => Ok(ValueOrArray::Value(value)),
+            Ok(simd_json::OwnedValue::Array(array)) => {
+                Ok(ValueOrArray::Array(array))
+            }
+            Ok(value) => {
+                // Try to deserialize as T
+                let t = simd_json::serde::from_owned_value(value)?;
+                Ok(ValueOrArray::Value(t))
+            }
             Err(_) => {
-                // Try parsing as an array
-                let json_str = String::from_utf8_lossy(json_bytes);
-                if json_str.trim().starts_with('[') {
-                    let mut array_copy = json_bytes.to_vec();
-                    let array: Vec<T> = simd_json::from_slice(&mut array_copy)?;
-                    Ok(ValueOrArray::Array(array))
-                } else {
-                    #[cfg(feature = "relaxed")]
-                    {
-                        json5::from_str(&json_str)
-                            .map(ValueOrArray::Value)
-                            .map_err(JsonParserError::Json5)
-                    }
-                    #[cfg(not(feature = "relaxed"))]
-                    {
-                        Err(JsonParserError::InvalidData(format!(
-                            "Failed to parse JSON: {}",
-                            json_str
-                        )))
-                    }
+                // Fallback to JSON5 if enabled
+                #[cfg(feature = "relaxed")]
+                {
+                    let json_str = String::from_utf8_lossy(json_bytes);
+                    let value: T = json5::from_str(&json_str)?;
+                    Ok(ValueOrArray::Value(value))
+                }
+                #[cfg(not(feature = "relaxed"))]
+                {
+                    Err(JsonParserError::InvalidData(format!(
+                        "Failed to parse JSON: {}",
+                        String::from_utf8_lossy(json_bytes)
+                    )))
                 }
             }
         }
     }
+    
+    
 
     #[instrument(skip(self))]
     pub async fn next_batch<T: DeserializeOwned + Serialize>(
@@ -256,7 +251,7 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
 
 enum ValueOrArray<T> {
     Value(T),
-    Array(Vec<T>),
+    Array(Vec<simd_json::OwnedValue>),
 }
 
 struct JsonStream<R, T> {
