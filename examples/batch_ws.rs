@@ -5,7 +5,7 @@ use std::io;
 #[tokio::main]
 async fn main() {
     // Create the WebSocket connector
-    let connector = WebSocketConnector::new("ws://echo.websocket.org").unwrap();
+    let connector = WebSocketConnector::new("ws://ws.postman-echo.com/raw").unwrap();
     let stream = connector.stream().await.unwrap();
 
     // Adapt the stream into an AsyncRead

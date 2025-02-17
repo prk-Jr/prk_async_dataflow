@@ -1,7 +1,7 @@
 use std::io::Cursor;
 use prk_async_dataflow::{AsyncJsonParser, DataConnector, FeatureTransformer, HttpConnector};
 use serde::{Deserialize, Serialize};
-use simd_json::{base::{ValueAsContainer, ValueAsScalar}, OwnedValue};
+use simd_json::{base::ValueAsScalar, OwnedValue};
 use tokio_stream::StreamExt;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -29,40 +29,17 @@ async fn main() {
     }));
 
     // Parse the array of posts
-    let mut stream = parser.into_stream::<OwnedValue>();
+    let mut stream = parser.into_stream::<simd_json::OwnedValue>();
     while let Some(result) = stream.next().await {
         match result {
-            Ok(value) => {
-                if let Some(posts) = value.as_array() {
-                    for post in posts {
-                        // Convert the `OwnedValue` to a JSON string and then deserialize it
-                        let mut json_string = post.to_string();
-                        unsafe {
-                            if let Ok(mut post) = simd_json::serde::from_str::<Post>(&mut json_string) {
-                                // Apply the transformation to the title
-                                post.title = post.title.to_uppercase();
-                                println!("Transformed Post: {:#?}", post);
-                            }
-                        }
-                            // Apply the transformation to the title
-                            println!("Transformed Post: {:#?}", post);
-                        }
-                    
-                } else {
-                    // Convert the `OwnedValue` to a JSON string and then deserialize it
-                    let mut json_string = value.to_string();
-                    unsafe  {
-                        if let Ok(mut post) = simd_json::serde::from_str::<Post>(&mut json_string) {
-                            // Apply the transformation to the title
-                            post.title = post.title.to_uppercase();
-                            println!("Transformed Post: {:#?}", post);
-                        }
-                    }
+            Ok(mut value) => {
+                value = transformer.transform(value.into()).into();
+                match simd_json::serde::from_owned_value::<Post>(value) {
+                    Ok(post) => println!("Transformed Post: {:#?}", post),
+                    Err(e) => eprintln!("Deserialization error: {}", e),
                 }
             }
-            Err(e) => {
-                eprintln!("Error parsing JSON: {}", e);
-            }
+            Err(e) => eprintln!("Error parsing JSON: {}", e),
         }
     }
 }
