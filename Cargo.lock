@@ -1952,6 +1952,7 @@ dependencies = [
  "dashmap 6.1.0",
  "futures",
  "governor",
+ "halfbrown",
  "json5",
  "lazy_static",
  "oauth2",

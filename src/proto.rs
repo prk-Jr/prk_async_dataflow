@@ -1,8 +1,9 @@
 
 #[cfg(feature = "protobuf")]
 pub mod proto {
+
     use prost::Message;
-    use serde_json::Value;
+    use simd_json::{base::{ValueAsContainer, ValueAsScalar}, owned::Value};
     use crate::JsonParserError;
 
     pub trait ProtoConverter: Message + Default {
@@ -10,7 +11,7 @@ pub mod proto {
         fn from_json(value: Value) -> Result<Self, JsonParserError>;
     }
 
-    #[derive(Message)]
+    #[derive(Message, Clone)]
     pub struct GenericMessage {
         #[prost(map="string, bytes", tag="1")]
         pub fields: std::collections::HashMap<String, Vec<u8>>,
@@ -18,11 +19,15 @@ pub mod proto {
 
     impl ProtoConverter for GenericMessage {
         fn to_json(&self) -> Value {
-            let mut map = serde_json::Map::new();
+            let mut map = halfbrown::HashMap::new();
             for (k, v) in &self.fields {
                 map.insert(k.clone(), Value::String(base64::encode(v)));
             }
-            Value::Object(map)
+            let mut sized_map = halfbrown::SizedHashMap::with_capacity(map.len());
+            for (k, v) in map {
+                sized_map.insert(k, v);
+            }
+            Value::Object(Box::new(sized_map))
         }
 
         fn from_json(value: Value) -> Result<Self, JsonParserError> {

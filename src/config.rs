@@ -7,7 +7,7 @@ pub mod configuration {
     pub struct AgentConfig {
         pub name: String,
         pub rules: Vec<String>,
-        pub parameters: serde_json::Value,
+        pub parameters: simd_json::owned::Value,
     }
 
     #[derive(Debug, Deserialize)]

@@ -36,12 +36,13 @@ tonic = { version = "0.12", optional = true, features = ["tls-roots"] }
 config = { version = "0.13", optional = true }
 governor = { version = "0.4", optional = true }
 tokio-retry = { version = "0.3", optional = true }
+halfbrown = { version = "0.2.5", optional = true }
 async-stream = "0.3"
 
 
 
 [features]
-default = ["http", "websocket", "connectors", "metrics",   "basic_agents", "auth"]
+default = ["http", "connectors", "metrics", "basic_agents", "auth",]
 relaxed = ["json5"]
 http = ["reqwest"]
 websocket = ["tokio-tungstenite"]
@@ -52,7 +53,7 @@ advanced_agents = ["ml", "auth"]
 connectors = ["http", "websocket", "async-trait", "tokio-util"]
 metrics = ["prometheus"]
 grpc = ["tonic", "prost"]
-protobuf = ["prost", "base64"]
+protobuf = ["prost", "base64", "halfbrown"]
 configs = ["config"]
 rate-limiting = ["governor"]
 circuit-breaker = ["tokio-retry"]

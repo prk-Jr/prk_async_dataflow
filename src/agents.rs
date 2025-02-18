@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use simd_json::owned::Value;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::mpsc;
 use crate::FeatureTransformer;
 
 #[derive(Debug)]
@@ -21,8 +21,8 @@ pub trait Agent: Send + Sync {
 
 #[cfg_attr(feature = "ml", async_trait)]
 pub trait Model: Send + Sync {
-    async fn predict(&self, input: &Value) -> Value;
-    async fn train(&self, experience: &Value);
+    fn predict(&self, input: &Value) -> impl std::future::Future<Output = Value> + Send;
+    fn train(&self, experience: &Value) -> impl std::future::Future<Output = ()> + Send;
 }
 
 #[cfg(feature = "ml")]
@@ -137,21 +137,21 @@ impl Agent for MLAgent {
 }
 
 pub struct AgentSystem {
-    agents: DashMap<String, Arc<dyn Agent + Send + Sync>>,
+    agents: DashMap<String, Arc<dyn Agent + Send + Sync + 'static>>,
     input_rx: mpsc::Receiver<Value>,
     output_tx: mpsc::Sender<Value>,
 }
 
 impl AgentSystem {
-    pub fn new(input_rx: mpsc::Receiver<Value>, output_tx: mpsc::Sender<Value>) -> Arc<Mutex<Self>> {
-        Arc::new(Mutex::new(Self {
+    pub fn new(input_rx: mpsc::Receiver<Value>, output_tx: mpsc::Sender<Value>) -> Self {
+        Self {
             agents: DashMap::new(),
             input_rx,
             output_tx,
-        }))
+        }
     }
 
-    pub fn add_agent(&self, name: &str, agent: Arc<dyn Agent + Send + Sync>) {
+    pub fn add_agent(&mut self, name: &str, agent: Arc<dyn Agent + Send + Sync + 'static>) {
         self.agents.insert(name.to_string(), agent);
     }
 
@@ -177,7 +177,7 @@ impl AgentSystem {
                     }
                 }
             }
-            AgentAction::ExternalCall(endpoint, data) => {
+            AgentAction::ExternalCall(_, data) => {
                 let _ = self.output_tx.send(data).await;
             }
         }

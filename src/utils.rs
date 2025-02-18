@@ -1,16 +1,16 @@
 #[cfg(feature = "rate-limiting")]
 pub mod rate_limiting {
-    use governor::{Quota, RateLimiter};
+    use governor::{clock::DefaultClock, state::{InMemoryState, NotKeyed}, Quota, RateLimiter};
     use std::num::NonZeroU32;
 
-    pub struct RateLimiter {
+    pub struct CustomRateLimiter {
         limiter: RateLimiter<NotKeyed, InMemoryState, DefaultClock>,
     }
 
-    impl RateLimiter {
-        pub fn new(requests_per_second: u32) -> Self {
+    impl CustomRateLimiter {
+        pub fn new(requests_per_second: u32) -> CustomRateLimiter {
             let quota = Quota::per_second(NonZeroU32::new(requests_per_second).unwrap());
-            Self {
+            CustomRateLimiter {
                 limiter: RateLimiter::direct(quota),
             }
         }

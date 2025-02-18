@@ -19,6 +19,9 @@ pub enum ConnectorError {
     Http(#[from] reqwest::Error),
     #[error("WebSocket error: {0}")]
     WebSocket(#[from] WsError),
+    #[cfg(feature = "grpc")]
+    #[error("WebSocket error: {0}")]
+    Grpc(#[from] tonic::Status),
     #[error("Invalid configuration: {0}")]
     Config(String),
     #[error("Authentication failed: {0}")]
@@ -196,30 +199,54 @@ impl DataConnector for WebSocketConnector {
     }
 }
 
-#[cfg(feature = "grpc")]
-pub mod grpc {
-    use tokio_stream::StreamExt;
-    use tonic::{transport::Channel, Request};
-    use crate::proto::proto::GenericMessage;
-    use super::{ConnectorError, DataConnector};
+// #[cfg(feature = "grpc")]
+// pub mod grpc {
+//     use prost::Message;
+//     use tokio_stream::StreamExt;
+//     use tonic::{codec::ProstCodec, transport::Channel, Request};
+//     use super::ConnectorError;
+//     use crate::proto::proto::GenericMessage;  // Assuming you have a proto module
+//       // Ensure prost::Message is in scope
 
-    #[derive(Clone)]
-    pub struct GrpcConnector {
-        client: GenericServiceClient<Channel>,
-    }
+//     // Generate this with prost/tonic build script
+//     #[derive(Clone)]
+//     pub struct GenericServiceClient {
+//         inner: tonic::client::Grpc<Channel>,
+//         codec: ProstCodec<GenericMessage, GenericMessage>,
+//     }
 
-    #[async_trait::async_trait]
-    impl DataConnector for GrpcConnector {
-        async fn fetch(&self) -> Result<Vec<u8>, ConnectorError> {
-            let request = Request::new(());
-            let response = self.client.get_data(request).await?;
-            Ok(response.into_inner().data)
-        }
+//     impl GenericServiceClient {
+//         pub fn new(channel: Channel) -> Self {
+//             Self { inner: tonic::client::Grpc::new(channel), codec: ProstCodec::default() }
+//         }
 
-        async fn stream(&self) -> Result<impl StreamExt<Item = Result<Vec<u8>, ConnectorError>>, ConnectorError> {
-            let request = Request::new(());
-            let stream = self.client.stream_data(request).await?.into_inner();
-            Ok(stream.map(|item| item.map(|r| r.data).map_err(Into::into)))
-        }
-    }
-}
+//         pub async fn get_data(&mut self, request: Request<GenericMessage>, path: &str) 
+//             -> Result<tonic::Response<GenericMessage>, tonic::Status> 
+//         {
+//             let path = path.parse().unwrap();
+//             self.inner.unary(request, path, self.codec.clone()).await
+//         }
+
+//         pub async fn stream_data(&mut self, request: Request<GenericMessage>,  path: &str) 
+//             -> Result<tonic::Response<tonic::Streaming<GenericMessage>>, tonic::Status> 
+//         {
+//             let path =path.parse().unwrap();
+//             self.inner.server_streaming(request, path, self.codec.clone()).await
+//         }
+//     }
+
+//     #[async_trait::async_trait]
+//     impl super::DataConnector for GenericServiceClient {
+//         async fn fetch(&self) -> Result<Vec<u8>, ConnectorError> {
+//             let mut client = self.clone();
+//             let response = client.get_data(Request::new(())).await?;
+//             Ok(response.get_ref().encode_to_vec())
+//         }
+
+//         async fn stream(&self) -> Result<impl futures::StreamExt<Item = Result<Vec<u8>, ConnectorError>>, ConnectorError> {
+//             let mut client = self.clone();
+//             let stream = client.stream_data(Request::new(())).await?.into_inner();
+//             Ok(stream.map(|item| item.map(|r| r.encode_to_vec()).map_err(Into::into)))
+//         }
+//     }
+// }
