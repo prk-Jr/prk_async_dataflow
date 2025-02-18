@@ -1,9 +1,12 @@
 use async_trait::async_trait;
-use reqwest::{Client, Url, Method, header::{HeaderMap, HeaderValue, AUTHORIZATION}};
-use serde::Serialize;
+use reqwest::{Client, Url, Method, header::{HeaderMap,  AUTHORIZATION}};
 use tokio_tungstenite::{connect_async, tungstenite::handshake::client::Request, tungstenite::Error as WsError};
 use futures::{StreamExt, TryStreamExt};
 use std::time::Duration;
+#[cfg(feature = "grpc")]
+use tonic::{transport::Channel, Status};
+#[cfg(feature = "grpc")]
+use prost::Message;
 
 #[async_trait]
 pub trait DataConnector {
@@ -198,55 +201,3 @@ impl DataConnector for WebSocketConnector {
             .map(|msg| msg.map(|m| m.into_data()).map_err(Into::into)))
     }
 }
-
-// #[cfg(feature = "grpc")]
-// pub mod grpc {
-//     use prost::Message;
-//     use tokio_stream::StreamExt;
-//     use tonic::{codec::ProstCodec, transport::Channel, Request};
-//     use super::ConnectorError;
-//     use crate::proto::proto::GenericMessage;  // Assuming you have a proto module
-//       // Ensure prost::Message is in scope
-
-//     // Generate this with prost/tonic build script
-//     #[derive(Clone)]
-//     pub struct GenericServiceClient {
-//         inner: tonic::client::Grpc<Channel>,
-//         codec: ProstCodec<GenericMessage, GenericMessage>,
-//     }
-
-//     impl GenericServiceClient {
-//         pub fn new(channel: Channel) -> Self {
-//             Self { inner: tonic::client::Grpc::new(channel), codec: ProstCodec::default() }
-//         }
-
-//         pub async fn get_data(&mut self, request: Request<GenericMessage>, path: &str) 
-//             -> Result<tonic::Response<GenericMessage>, tonic::Status> 
-//         {
-//             let path = path.parse().unwrap();
-//             self.inner.unary(request, path, self.codec.clone()).await
-//         }
-
-//         pub async fn stream_data(&mut self, request: Request<GenericMessage>,  path: &str) 
-//             -> Result<tonic::Response<tonic::Streaming<GenericMessage>>, tonic::Status> 
-//         {
-//             let path =path.parse().unwrap();
-//             self.inner.server_streaming(request, path, self.codec.clone()).await
-//         }
-//     }
-
-//     #[async_trait::async_trait]
-//     impl super::DataConnector for GenericServiceClient {
-//         async fn fetch(&self) -> Result<Vec<u8>, ConnectorError> {
-//             let mut client = self.clone();
-//             let response = client.get_data(Request::new(())).await?;
-//             Ok(response.get_ref().encode_to_vec())
-//         }
-
-//         async fn stream(&self) -> Result<impl futures::StreamExt<Item = Result<Vec<u8>, ConnectorError>>, ConnectorError> {
-//             let mut client = self.clone();
-//             let stream = client.stream_data(Request::new(())).await?.into_inner();
-//             Ok(stream.map(|item| item.map(|r| r.encode_to_vec()).map_err(Into::into)))
-//         }
-//     }
-// }

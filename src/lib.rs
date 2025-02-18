@@ -78,8 +78,7 @@ pub mod agents;
 // #[cfg(feature = "ml")]
 pub use agents::*;
 
-mod proto;
-pub use proto::*;
+
 
 mod utils;
 pub use utils::*;

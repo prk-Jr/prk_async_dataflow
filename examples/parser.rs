@@ -28,9 +28,9 @@ async fn batch_parse(data: &[u8]) {
 // To Run: cargo run --features relaxed --example parser
 #[tokio::main]
 async fn main() {
-    let data = r#"{"id": 1, "name": "Alice"}\n{"id": 2, "name": "Bob"}"#.as_bytes();
+    let data = r#"{"id": 1 "name": "Alice"}\n{id": 2 "name": "Bob""#.as_bytes();
     batch_parse(data).await;
-    let data = r#"{"id": 2, "name": "Charlie"}{"id": 2, "name": "Bob"}"#.as_bytes();
+    let data = r#"id": 2, "name": "Charlie" "id": 2, "name": "Bob""#.as_bytes();
     batch_parse(data).await;
     let data = r#"
     Here is your response:
