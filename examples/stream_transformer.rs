@@ -1,5 +1,5 @@
 use std::io::Cursor;
-use prk_async_dataflow::{AsyncJsonParser, DataConnector, FeatureTransformer, HttpConnector};
+use prk_async_dataflow::{AsyncJsonParser, DataConnector, FeatureTransformer, HttpConfig, HttpConnector};
 use serde::{Deserialize, Serialize};
 use simd_json::{base::ValueAsScalar, OwnedValue};
 use tokio_stream::StreamExt;
@@ -13,7 +13,7 @@ struct Post {
 
 #[tokio::main]
 async fn main() {
-    let connector = HttpConnector::new("https://jsonplaceholder.typicode.com/posts").unwrap();
+    let connector = HttpConnector::new("https://jsonplaceholder.typicode.com/posts", HttpConfig::default()).unwrap();
     let data = connector.fetch().await.unwrap();
     let reader = Cursor::new(data);
     let parser = AsyncJsonParser::new(reader);

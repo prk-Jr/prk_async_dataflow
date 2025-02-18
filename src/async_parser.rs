@@ -1,5 +1,8 @@
 use bytes::{Buf, BytesMut};
+#[cfg(feature = "metrics")]
 use lazy_static::lazy_static;
+
+#[cfg(feature = "metrics")]
 use prometheus::{IntCounter, IntGauge, register_int_counter, register_int_gauge};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -15,6 +18,7 @@ use futures::Future;
 
 use crate::{extract_json, FeatureTransformer};
 
+#[cfg(feature = "metrics")]
 lazy_static! {
     static ref PARSED_JSON_COUNT: IntCounter = register_int_counter!(
         "parsed_json_count",
@@ -125,7 +129,7 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                 return Err(JsonParserError::IncompleteData);
             }
         }
-
+        #[cfg(feature = "metrics")]
         BUFFER_SIZE_GAUGE.set(self.buffer.len() as i64);
         Ok(())
     }
@@ -275,6 +279,8 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                 Err(e) => return Err(e),
             }
         }
+        
+        #[cfg(feature = "metrics")]
         if !batch.is_empty() {
             PARSED_JSON_COUNT.inc_by(batch.len() as u64);
         }
@@ -293,6 +299,7 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
                 Err(e) => return Err(e),
             }
         }
+        #[cfg(feature = "metrics")]
         if !batch.is_empty() {
             PARSED_JSON_COUNT.inc_by(batch.len() as u64);
         }
