@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::{extract_json, AsyncJsonParser, ChannelReader};
+    use oauth2::http::response;
     use tokio::io::BufReader;
     use std::io::Cursor;
     use tokio::sync::mpsc;
@@ -185,7 +186,8 @@ This JSON response includes a status, a message, and some data about a user."#;
                 sleep(Duration::from_millis(10)).await;
             }
         });
-        let response: LLMResponse = parser.next().await.unwrap();
+        let response = parser.next::<LLMResponse>().await;
+        let response   = response.unwrap();
         assert_eq!(response.status, "success");
         assert_eq!(response.data.name, "John Doe");
     }

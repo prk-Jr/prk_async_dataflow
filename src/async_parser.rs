@@ -186,70 +186,44 @@ impl<R: AsyncRead + Unpin> AsyncJsonParser<R> {
         &mut self,
         json_bytes: &[u8],
     ) -> Result<ValueOrArray<T>, JsonParserError> {
-        // Create a mutable copy of the input bytes
         let mut buffer_copy = json_bytes.to_vec();
         
-        // First attempt to parse using SIMD-accelerated JSON
+        // First attempt SIMD parsing
         match simd_json::from_slice(&mut buffer_copy) {
             Ok(simd_json::OwnedValue::Array(array)) => {
-                // If we have a transformer, apply it to each element
                 if let Some(transformer) = &self.config.transformer {
-                    let transformed_array = array.into_iter()
-                        .map(|value| transformer.transform(value.into()))
+                    let transformed = array.into_iter()
+                        .map(|v| transformer.transform(v))
                         .collect();
-                    return Ok(ValueOrArray::Array(transformed_array));
+                    Ok(ValueOrArray::Array(transformed))
+                } else {
+                    Ok(ValueOrArray::Array(array))
                 }
-                Ok(ValueOrArray::Array(array))
             }
             Ok(mut value) => {
-                // Apply transformer if configured
                 if let Some(transformer) = &self.config.transformer {
                     value = transformer.transform(value);
                 }
-                
-                // Try to deserialize as T
-                match simd_json::serde::from_owned_value(value) {
-                    Ok(t) => Ok(ValueOrArray::Value(t)),
-                    Err(e) => {
-                        // Fallback to JSON5 if enabled
-                        #[cfg(feature = "relaxed")]
-                        {
-                            let json_str = String::from_utf8_lossy(json_bytes);
-                            match json5::from_str(&json_str) {
-                                Ok(t) => Ok(ValueOrArray::Value(t)),
-                                Err(e) => Err(JsonParserError::InvalidData(e.to_string())),
-                            }
-                        }
-                        #[cfg(not(feature = "relaxed"))]
-                        {
-                            Err(JsonParserError::InvalidData(format!(
-                                "Failed to parse JSON: {}",
-                                String::from_utf8_lossy(json_bytes)
-                            )))
-                        }
-                    }
-                }
+                simd_json::serde::from_owned_value(value).map(ValueOrArray::Value).map_err(Into::into)
             }
             Err(_) => {
-                // Fallback to JSON5 if enabled
                 #[cfg(feature = "relaxed")]
                 {
-                    let json_str = String::from_utf8_lossy(json_bytes);
-                    match json5::from_str(&json_str) {
+                    let mut json_str = String::from_utf8_lossy(json_bytes).into_owned();
+                    // Wrap in braces if not already an object/array
+                    if !json_str.starts_with('{') && !json_str.starts_with('[') {
+                        json_str = format!("{{{json_str}}}");
+                    }
+                    match json5::from_str::<T>(&json_str) {
                         Ok(value) => {
-                            // Apply transformer if configured
+                            let mut json_bytes = simd_json::to_vec(&value).map_err(|e| JsonParserError::Json(e))?;
+                            let mut owned_value = simd_json::to_owned_value(&mut json_bytes).map_err(|e| JsonParserError::Json(e))?;
                             if let Some(transformer) = &self.config.transformer {
-                                let transformed = transformer.transform(value);
-                                match simd_json::serde::from_owned_value(transformed) {
-                                    Ok(t) => Ok(ValueOrArray::Value(t)),
-                                    Err(e) => Err(JsonParserError::Json(e)),
-                                }
-                            } else {
-                                match simd_json::serde::from_owned_value(value) {
-                                    Ok(t) => Ok(ValueOrArray::Value(t)),
-                                    Err(e) => Err(JsonParserError::Json(e)),
-                                }
+                                owned_value = transformer.transform(owned_value);
                             }
+                            simd_json::serde::from_owned_value(owned_value)
+                                .map(ValueOrArray::Value)
+                                .map_err(|e| JsonParserError::Json(e))
                         }
                         Err(e) => Err(JsonParserError::Json5(e)),
                     }

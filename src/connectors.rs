@@ -3,10 +3,6 @@ use reqwest::{Client, Url, Method, header::{HeaderMap,  AUTHORIZATION}};
 use tokio_tungstenite::{connect_async, tungstenite::handshake::client::Request, tungstenite::Error as WsError};
 use futures::{StreamExt, TryStreamExt};
 use std::time::Duration;
-#[cfg(feature = "grpc")]
-use tonic::{transport::Channel, Status};
-#[cfg(feature = "grpc")]
-use prost::Message;
 
 #[async_trait]
 pub trait DataConnector {
@@ -22,14 +18,12 @@ pub enum ConnectorError {
     Http(#[from] reqwest::Error),
     #[error("WebSocket error: {0}")]
     WebSocket(#[from] WsError),
-    #[cfg(feature = "grpc")]
-    #[error("WebSocket error: {0}")]
-    Grpc(#[from] tonic::Status),
     #[error("Invalid configuration: {0}")]
     Config(String),
     #[error("Authentication failed: {0}")]
     Auth(String),
 }
+
 
 #[derive(Clone, Debug)]
 pub enum AuthMethod {
@@ -199,5 +193,17 @@ impl DataConnector for WebSocketConnector {
         let (ws_stream, _) = connect_async(request).await?;
         Ok(ws_stream
             .map(|msg| msg.map(|m| m.into_data()).map_err(Into::into)))
+    }
+}
+
+impl From<ConnectorError> for std::io::Error {
+    fn from(err: ConnectorError) -> Self {
+        use ConnectorError::*;
+        match err {
+            Http(e) => std::io::Error::new(std::io::ErrorKind::Other, e),
+            WebSocket(e) => std::io::Error::new(std::io::ErrorKind::Other, e),
+            Config(msg) => std::io::Error::new(std::io::ErrorKind::InvalidInput, msg),
+            Auth(msg) => std::io::Error::new(std::io::ErrorKind::PermissionDenied, msg),
+        }
     }
 }
