@@ -18,9 +18,10 @@ impl<S> StreamToAsyncRead<S> {
     }
 }
 
-impl<S> AsyncRead for StreamToAsyncRead<S>
+impl<S, E> AsyncRead for StreamToAsyncRead<S>
 where
-    S: Stream<Item = Result<Vec<u8>, std::io::Error>> + Unpin,
+    S: Stream<Item = Result<Vec<u8>, E>> + Unpin,
+    E: Into<std::io::Error>,
 {
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -32,7 +33,7 @@ where
                 Poll::Ready(Some(Ok(data))) => {
                     self.buffer.put_slice(&data);
                 }
-                Poll::Ready(Some(Err(e))) => return Poll::Ready(Err(e)),
+                Poll::Ready(Some(Err(e))) => return Poll::Ready(Err(e.into())),
                 Poll::Ready(None) => return Poll::Ready(Ok(())), // EOF
                 Poll::Pending => return Poll::Pending,
             }

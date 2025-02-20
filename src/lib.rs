@@ -48,7 +48,7 @@
 #[cfg(test)]
 mod tests;
 
-mod reader;
+pub mod reader;
 pub use reader::*;
 
 mod async_parser;
@@ -60,11 +60,28 @@ pub use extract_json::*;
 mod transformers;
 pub use transformers::*;
 
-mod connectors;
+#[cfg(feature = "connectors")]
+pub mod connectors;
+#[cfg(feature = "connectors")]
 pub use connectors::*;
 
-mod metrics;
+#[cfg(feature = "metrics")]
+pub mod metrics;
+#[cfg(feature = "metrics")]
 pub use metrics::*;
 
 mod stream_adapter;
 pub use stream_adapter::*;
+
+// #[cfg(feature = "ml")]
+pub mod agents;
+// #[cfg(feature = "ml")]
+pub use agents::*;
+
+
+
+mod utils;
+pub use utils::*;
+
+mod config;
+pub use config::*;

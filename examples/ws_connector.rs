@@ -4,7 +4,7 @@ use std::io;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let connector = WebSocketConnector::new("ws://echo.websocket.org").unwrap();
+    let connector = WebSocketConnector::new("ws://echo.websocket.org", None).unwrap();
     let stream = connector.stream().await.map_err(|f| format!("WSERROR: {:?}", f.to_string()))?;
 
     // Adapt the stream into an AsyncRead

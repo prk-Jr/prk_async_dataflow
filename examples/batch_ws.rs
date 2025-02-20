@@ -12,7 +12,7 @@ struct Message {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create the WebSocket connector
-    let connector = WebSocketConnector::new("wss://ws.postman-echo.com/raw")?;
+    let connector = WebSocketConnector::new("wss://ws.postman-echo.com/raw", None)?;
     
     // Connect and get the stream
     let stream = connector.stream().await?;

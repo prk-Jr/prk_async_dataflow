@@ -1,4 +1,4 @@
-use prk_async_dataflow::{AsyncJsonParser, DataConnector, HttpConnector, ParserConfig};
+use prk_async_dataflow::{AsyncJsonParser, DataConnector, HttpConfig, HttpConnector, ParserConfig};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -10,7 +10,7 @@ struct Post {
 
 #[tokio::main]
 async fn main() {
-    let connector = HttpConnector::new("https://jsonplaceholder.typicode.com/posts").unwrap();
+    let connector = HttpConnector::new("https://jsonplaceholder.typicode.com/posts", HttpConfig::default()).unwrap();
     let data = connector.fetch().await.unwrap();
     
     let mut parser = AsyncJsonParser::with_config(
